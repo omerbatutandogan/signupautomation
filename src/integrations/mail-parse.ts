@@ -14,6 +14,36 @@ export interface ParsedMessage {
   subject: string;
   text: string;
   html: string;
+  /** Gmail internalDate — epoch ms. Zaman penceresi eşleştirmesi için gerekli. */
+  receivedAt: number;
+}
+
+/**
+ * Mesajın bu siteye ait doğrulama maili olup olmadığını kontrol eder.
+ *
+ * Tek e-posta adresi tüm sitelere kaydolunduğu için `to:` ile ayrım
+ * yapılamıyor — eşleştirme `from:<site domain>` + kayıt sonrası zaman
+ * penceresine dayanıyor. Siteler sıralı işlendiği için (aynı anda tek site)
+ * çakışma riski düşük, ama sıfır değil: iki site art arda kısa sürede mail
+ * atarsa `from` alanı asıl ayırt edici olur.
+ */
+export function isVerificationCandidate(
+  msg: ParsedMessage,
+  spec: VerificationSpec,
+  opts: { siteDomain: string; submittedAt: number },
+): boolean {
+  if (msg.receivedAt < opts.submittedAt - 60_000) return false; // kayıttan önceki mail olamaz
+
+  const fromDomain = domainOfAddress(msg.from);
+  const expected = spec.from ? domainOfAddress(spec.from.replace(/^\*@/, 'x@')) : opts.siteDomain;
+  if (fromDomain && expected && fromDomain !== expected) return false;
+
+  if (spec.subjectContains?.length) {
+    const subj = msg.subject.toLowerCase();
+    if (!spec.subjectContains.some((s) => subj.includes(s.toLowerCase()))) return false;
+  }
+
+  return true;
 }
 
 /** Doğrulama linki olamayacak hostlar / uzantılar. */
@@ -71,19 +101,35 @@ function isNoise(url: string, text: string): boolean {
   return NOISE_PATTERNS.some((re) => re.test(url) || re.test(text));
 }
 
+/** Hostname'i kayıtlanabilir domain'e indirger (eTLD+1 yaklaşımı). */
+function registrableDomainFromHost(host: string): string {
+  const parts = host.toLowerCase().split('.');
+  if (parts.length <= 2) return host.toLowerCase();
+  // co.uk, com.tr gibi ikili son ekler için bir seviye daha al.
+  const twoLevel = /^(co|com|net|org|gov|edu|ac)\.[a-z]{2}$/;
+  const lastTwo = parts.slice(-2).join('.');
+  return twoLevel.test(lastTwo) ? parts.slice(-3).join('.') : lastTwo;
+}
+
 /** URL'in kayıtlanabilir domain'ini kabaca çıkarır (eTLD+1 yaklaşımı). */
 export function registrableDomain(url: string): string {
   try {
-    const host = new URL(url).hostname.toLowerCase();
-    const parts = host.split('.');
-    if (parts.length <= 2) return host;
-    // co.uk, com.tr gibi ikili son ekler için bir seviye daha al.
-    const twoLevel = /^(co|com|net|org|gov|edu|ac)\.[a-z]{2}$/;
-    const lastTwo = parts.slice(-2).join('.');
-    return twoLevel.test(lastTwo) ? parts.slice(-3).join('.') : lastTwo;
+    return registrableDomainFromHost(new URL(url).hostname);
   } catch {
     return '';
   }
+}
+
+/**
+ * "Site Name" <noreply@site.com> ya da düz noreply@site.com formatındaki
+ * bir gönderen alanından kayıtlanabilir domain'i çıkarır.
+ */
+export function domainOfAddress(address: string): string {
+  const match = /<([^>]+)>/.exec(address);
+  const raw = (match?.[1] ?? address).trim();
+  const host = raw.split('@').pop();
+  if (!host) return '';
+  return registrableDomainFromHost(host);
 }
 
 interface ScoredLink {

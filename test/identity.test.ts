@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { derivePassword, derivePasswordForSite } from '../src/identity/password.js';
-import { emailForSite, slugifyLocalPart, usernameForSite } from '../src/identity/email.js';
+import { signupEmail, slugifySiteId, usernameForSite } from '../src/identity/email.js';
 
 const SECRET = 'a'.repeat(64);
 
@@ -67,33 +67,31 @@ describe('derivePassword', () => {
   });
 });
 
-describe('slugifyLocalPart', () => {
+describe('slugifySiteId', () => {
   it('Türkçe karakterleri ASCII’ye indirger', () => {
-    expect(slugifyLocalPart('Ürün Dizini')).toBe('urun-dizini');
+    expect(slugifySiteId('Ürün Dizini')).toBe('urun-dizini');
   });
 
   it('noktalama ve boşlukları tireye çevirir, uçlardaki tireleri atar', () => {
-    expect(slugifyLocalPart('  Product Hunt!  ')).toBe('product-hunt');
+    expect(slugifySiteId('  Product Hunt!  ')).toBe('product-hunt');
   });
 
   it('tamamen geçersiz girdide hata verir', () => {
-    expect(() => slugifyLocalPart('!!!')).toThrow();
+    expect(() => slugifySiteId('!!!')).toThrow();
   });
 });
 
-describe('emailForSite', () => {
-  it('catch-all adresi üretir — artı-adresleme YOK', () => {
-    const addr = emailForSite('signup.noderan.com', 'AlternativeTo');
-    expect(addr).toBe('alternativeto@signup.noderan.com');
-    expect(addr).not.toContain('+');
+describe('signupEmail', () => {
+  it('tek sabit adresi olduğu gibi döndürür — tüm sitelerde aynı adres kullanılır', () => {
+    expect(signupEmail('mysignups@gmail.com')).toBe('mysignups@gmail.com');
   });
 
-  it('domain yerine adres verilirse hata verir', () => {
-    expect(() => emailForSite('signups@noderan.com', 'x')).toThrow(/sadece domain/);
+  it('adres @ içermiyorsa hata verir', () => {
+    expect(() => signupEmail('not-an-email')).toThrow(/geçerli bir adres/);
   });
 
-  it('domain boşsa anlamlı hata verir', () => {
-    expect(() => emailForSite('', 'x')).toThrow(/EMAIL_DOMAIN/);
+  it('boşsa anlamlı hata verir', () => {
+    expect(() => signupEmail('')).toThrow(/SIGNUP_EMAIL/);
   });
 });
 

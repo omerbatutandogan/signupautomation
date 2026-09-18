@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  domainOfAddress,
   extractBareUrls,
   extractLinks,
   extractVerificationCode,
   extractVerificationLink,
+  isVerificationCandidate,
   registrableDomain,
   scoreLinks,
   type ParsedMessage,
@@ -11,7 +13,15 @@ import {
 import { ManualReviewError } from '../src/core/errors.js';
 
 function msg(partial: Partial<ParsedMessage>): ParsedMessage {
-  return { id: 'm1', from: 'noreply@example.com', subject: '', text: '', html: '', ...partial };
+  return {
+    id: 'm1',
+    from: 'noreply@example.com',
+    subject: '',
+    text: '',
+    html: '',
+    receivedAt: Date.now(),
+    ...partial,
+  };
 }
 
 describe('registrableDomain', () => {
@@ -148,5 +158,85 @@ describe('extractVerificationCode', () => {
 
   it('kod yoksa ManualReviewError fırlatır', () => {
     expect(() => extractVerificationCode(msg({ text: 'kod yok' }))).toThrow(ManualReviewError);
+  });
+});
+
+describe('domainOfAddress', () => {
+  it('düz e-posta adresinden domain çıkarır', () => {
+    expect(domainOfAddress('noreply@alternativeto.net')).toBe('alternativeto.net');
+  });
+
+  it('"İsim <adres>" formatından domain çıkarır', () => {
+    expect(domainOfAddress('"AlternativeTo" <noreply@alternativeto.net>')).toBe(
+      'alternativeto.net',
+    );
+  });
+
+  it('alt domainleri eTLD+1e indirger', () => {
+    expect(domainOfAddress('mail@notifications.g2.com')).toBe('g2.com');
+  });
+});
+
+describe('isVerificationCandidate — tek e-posta ile mail eşleştirmesi', () => {
+  // Senaryo: tüm siteler AYNI adrese kaydolduğu için `to:` ayrım sağlamıyor.
+  // Eşleştirme from-domain + kayıt sonrası zaman penceresine dayanıyor.
+  const submittedAt = Date.parse('2026-09-19T10:00:00Z');
+
+  it('doğru site domaininden, kayıttan sonra gelen maili kabul eder', () => {
+    const m = msg({
+      from: 'noreply@alternativeto.net',
+      receivedAt: submittedAt + 30_000,
+    });
+    expect(
+      isVerificationCandidate(m, { mode: 'link' }, { siteDomain: 'alternativeto.net', submittedAt }),
+    ).toBe(true);
+  });
+
+  it('başka bir siteden aynı anda gelen maili reddeder (çakışma senaryosu)', () => {
+    // İki site art arda işlense bile from-domain ayrımı kimin mailinin
+    // kime ait olduğunu netleştiriyor.
+    const m = msg({
+      from: 'noreply@stackshare.io',
+      receivedAt: submittedAt + 30_000,
+    });
+    expect(
+      isVerificationCandidate(m, { mode: 'link' }, { siteDomain: 'alternativeto.net', submittedAt }),
+    ).toBe(false);
+  });
+
+  it('kayıttan önce gelen maili reddeder (bayat/alakasız mail)', () => {
+    const m = msg({
+      from: 'noreply@alternativeto.net',
+      receivedAt: submittedAt - 5 * 60_000,
+    });
+    expect(
+      isVerificationCandidate(m, { mode: 'link' }, { siteDomain: 'alternativeto.net', submittedAt }),
+    ).toBe(false);
+  });
+
+  it('spec.from verilmişse siteDomain yerine onu kullanır', () => {
+    const m = msg({ from: 'notifications@mail.g2.com', receivedAt: submittedAt + 10_000 });
+    expect(
+      isVerificationCandidate(
+        m,
+        { mode: 'link', from: '*@g2.com' },
+        { siteDomain: 'g2.com', submittedAt },
+      ),
+    ).toBe(true);
+  });
+
+  it('subjectContains verilmişse konuyu da kontrol eder', () => {
+    const m = msg({
+      from: 'noreply@alternativeto.net',
+      subject: 'Welcome to the newsletter',
+      receivedAt: submittedAt + 10_000,
+    });
+    expect(
+      isVerificationCandidate(
+        m,
+        { mode: 'link', subjectContains: ['confirm', 'verify'] },
+        { siteDomain: 'alternativeto.net', submittedAt },
+      ),
+    ).toBe(false);
   });
 });

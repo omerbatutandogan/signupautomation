@@ -1,42 +1,46 @@
 /**
- * Catch-all subdomain adresleri: <site-id>@signup.noderan.com
+ * Tek sabit e-posta adresi — TÜM sitelere aynı adresle kaydolunuyor.
  *
- * Artı-adresleme (signups+g2@…) KULLANILMIYOR: formlar '+' işaretini
- * validation hatası ya da kasıtlı çoklu-hesap engeli olarak reddediyor,
- * platformlar da '+' sonrasını normalize edip siliyor.
+ * Bilinçli tercih: kurumsal domain (noderan.com) yerine kullanılmayan
+ * bireysel bir Gmail hesabı kullanılıyor; kurulum daha basit (DNS/Workspace
+ * admin erişimi gerekmiyor, sade OAuth yeterli) ve kurumsal domain'in spam
+ * itibarı hiç risk altına girmiyor.
+ *
+ * Sonuç: mail eşleştirmesi artık `to:` adresine göre değil, `from:<site
+ * domain>` + zaman penceresine göre yapılıyor (integrations/gmail.ts).
+ * Siteler sıralı işlendiği için (aynı anda tek site) çakışma riski düşük.
  */
 
-const MAX_LOCAL_PART = 64; // RFC 5321
+/** Sabit kayıt adresini döndürür. Tek doğrulama noktası — .env'den okunur. */
+export function signupEmail(fixedAddress: string): string {
+  if (!fixedAddress) {
+    throw new Error('SIGNUP_EMAIL tanımsız — .env dosyasını kontrol et');
+  }
+  if (!fixedAddress.includes('@')) {
+    throw new Error(`SIGNUP_EMAIL geçerli bir adres değil: "${fixedAddress}"`);
+  }
+  return fixedAddress;
+}
 
-/** Site id'sini güvenli bir e-posta local-part'ına çevirir. */
-export function slugifyLocalPart(raw: string): string {
+/** Site id'sini kullanıcı adı üretimi için güvenli bir slug'a çevirir. */
+export function slugifySiteId(raw: string): string {
   const slug = raw
     .toLowerCase()
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, MAX_LOCAL_PART);
+    .replace(/^-+|-+$/g, '');
 
-  if (!slug) throw new Error(`Geçersiz e-posta local-part kaynağı: "${raw}"`);
+  if (!slug) throw new Error(`Geçersiz site id: "${raw}"`);
   return slug;
 }
 
-/** Site için catch-all adresi üretir. */
-export function emailForSite(domain: string, localPart: string): string {
-  if (!domain) throw new Error('EMAIL_DOMAIN tanımsız — .env dosyasını kontrol et');
-  if (domain.includes('@')) {
-    throw new Error(`EMAIL_DOMAIN sadece domain olmalı, adres değil: "${domain}"`);
-  }
-  return `${slugifyLocalPart(localPart)}@${domain}`;
-}
-
 /**
- * Kullanıcı adı üretir. Çoğu site alfanumerik + alt çizgi kabul eder,
- * tire kabul etmeyenler yaygın olduğu için tireler alt çizgiye çevrilir.
+ * Kullanıcı adı üretir. E-posta sabit olduğu için ayrımı username taşıyor —
+ * çoğu site alfanumerik + alt çizgi kabul eder.
  */
 export function usernameForSite(base: string, siteId: string): string {
-  const suffix = slugifyLocalPart(siteId).replace(/-/g, '').slice(0, 8);
+  const suffix = slugifySiteId(siteId).replace(/-/g, '').slice(0, 8);
   const root = base.toLowerCase().replace(/[^a-z0-9]/g, '');
   return `${root}_${suffix}`.slice(0, 30);
 }
