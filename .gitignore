@@ -1,0 +1,34 @@
+# Sırlar — MASTER_SECRET burada, asla commit edilmez
+.env
+.env.*
+!.env.example
+.auth/
+*.pem
+*service-account*.json
+client_secret*.json
+
+# Çalışma zamanı verisi
+data/
+artifacts/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+
+# Bağımlılıklar / build
+node_modules/
+dist/
+
+# Playwright
+test-results/
+playwright-report/
+.playwright/
+
+# Loglar
+*.log
+logs/
+
+# Araç durumu (oh-my-claudecode)
+.omc/
+
+# OS
+.DS_Store
