@@ -48,9 +48,12 @@ bir Gmail hesabı öneriliyor (kurumsal adresi bu trafiğe karıştırma).
 
 1. [Google Cloud Console](https://console.cloud.google.com) → yeni proje
 2. **APIs & Services → Library** → "Gmail API" → **Enable**
-3. **OAuth consent screen** → External → **PUBLISH APP**
-   > ⚠️ "Testing" modunda bırakırsan refresh token **7 günde ölür** ve
-   > otomasyon sessizce durur. Kendi hesabın için doğrulama süreci gerekmiyor.
+3. **OAuth consent screen** → External →  **Audience → Test users → + ADD USERS** → kayıt hesabını ekle
+   > Production'a geçiş `gmail.readonly` gibi hassas scope'lar için homepage +
+   > privacy policy istiyor — bu iç araç için gereksiz yük, bilinçli olarak
+   > **Testing modunda** kalındı. Bedeli: refresh token **7 günde ölüyor**.
+   > `npm run gmail:auth` her çalıştığında mevcut token'ın yaşını gösterir —
+   > haftada bir (ya da uyarı geldiğinde) yeniden çalıştırmak yeterli.
 4. **Credentials → Create Credentials → OAuth client ID** → *Desktop app*
 5. JSON'u indir → `.auth/gmail-client-secret.json`
 6. Yetkilendir:
@@ -60,6 +63,10 @@ npm run gmail:auth
 ```
 
 Tarayıcı açılır, kayıt hesabıyla giriş yaparsın, token `.auth/` altına yazılır.
+
+> 💡 **Haftalık rutin:** Test kullanıcısı modunda kaldığımız için bu komutu
+> haftada bir yeniden çalıştırmak gerekiyor. Otomasyon çalışmıyor gibi
+> görünürse önce bunu dene.
 
 ### 3. Doğrula
 

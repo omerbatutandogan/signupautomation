@@ -4,14 +4,17 @@
  * Kişisel Gmail hesabı kullanıldığı için Workspace service account /
  * domain-wide delegation GEREKMİYOR — sade OAuth yeterli.
  *
- * ÖNEMLİ: Google Cloud Console'da OAuth consent screen "Testing" modunda
- * kalırsa refresh token 7 GÜNDE sessizce ölür ve otomasyon durur.
- * "Production"a almak şart (kendi hesabın için doğrulama süreci gerekmez).
+ * ÖNEMLİ: OAuth consent screen "Testing" modunda kalırsa (Google, hassas
+ * scope'lar için Production'a geçişte homepage + privacy policy istiyor —
+ * bu iç araç için bunları hazırlamak gereksiz yük olduğundan bilinçli
+ * olarak Testing'de kalındı) refresh token 7 GÜNDE sessizce ölür.
+ * Bu script her çalıştığında mevcut token'ın yaşını gösterir; haftada bir
+ * (ya da uyarı geldiğinde) yeniden çalıştırmak yeterli.
  *
  * Kullanım:
  *   1) Google Cloud Console → yeni proje
  *   2) APIs & Services → Library → "Gmail API" → Enable
- *   3) OAuth consent screen → External → PUBLISH APP ("Production")
+ *   3) OAuth consent screen → External → Audience → Test users → ekle
  *   4) Credentials → Create Credentials → OAuth client ID → Desktop app
  *   5) JSON'u indir → .auth/gmail-client-secret.json
  *   6) npm run gmail:auth
@@ -27,6 +30,9 @@ const SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
 const CLIENT_FILE = process.env.GOOGLE_OAUTH_CLIENT_FILE ?? '.auth/gmail-client-secret.json';
 const TOKEN_FILE = process.env.GOOGLE_OAUTH_TOKEN_FILE ?? '.auth/gmail-token.json';
 const CALLBACK_PORT = 5899;
+
+/** Test kullanıcısı modunda Google'ın refresh token'ı öldürdüğü süre. */
+const TESTING_MODE_TOKEN_LIFETIME_DAYS = 7;
 
 interface ClientSecret {
   installed?: { client_id: string; client_secret: string; redirect_uris?: string[] };
@@ -87,7 +93,38 @@ function waitForCode(): Promise<string> {
   });
 }
 
+/** Mevcut token varsa yaşını gösterir; süresi dolmuşsa/yakınsa uyarır. */
+async function checkExistingToken(): Promise<void> {
+  let raw: string;
+  try {
+    raw = await readFile(TOKEN_FILE, 'utf8');
+  } catch {
+    return; // henüz hiç yetkilendirme yapılmamış — ilk kurulum
+  }
+
+  const parsed = JSON.parse(raw) as { issuedAt?: number };
+  if (!parsed.issuedAt) {
+    console.log('ℹ️  Mevcut token yaşı bilinmiyor (eski format) — yeniden yetkilendiriliyor.\n');
+    return;
+  }
+
+  const ageDays = (Date.now() - parsed.issuedAt) / (24 * 60 * 60 * 1000);
+  const remaining = TESTING_MODE_TOKEN_LIFETIME_DAYS - ageDays;
+
+  if (remaining <= 0) {
+    console.log(`⚠️  Mevcut token ${ageDays.toFixed(1)} günlük — muhtemelen ÖLMÜŞ (test kullanıcısı modunda 7 gün sınırı var).`);
+    console.log('   Yeniden yetkilendiriliyor...\n');
+  } else if (remaining <= 2) {
+    console.log(`⚠️  Mevcut token ${ageDays.toFixed(1)} günlük — ${remaining.toFixed(1)} gün içinde ölecek.`);
+    console.log('   Yeniden yetkilendiriliyor, sorun değil.\n');
+  } else {
+    console.log(`ℹ️  Mevcut token ${ageDays.toFixed(1)} günlük, ~${remaining.toFixed(1)} gün daha geçerli.`);
+    console.log('   Yine de yeniden yetkilendiriliyor (isteğe bağlı, zarar vermez).\n');
+  }
+}
+
 async function main(): Promise<void> {
+  await checkExistingToken();
   const { id, secret } = await loadClientSecret();
   const redirectUri = `http://localhost:${CALLBACK_PORT}`;
   const oauth2 = new gmailAuth.OAuth2(id, secret, redirectUri);
@@ -123,7 +160,8 @@ async function main(): Promise<void> {
   }
 
   await mkdir(dirname(TOKEN_FILE), { recursive: true });
-  await writeFile(TOKEN_FILE, JSON.stringify(tokens, null, 2), { mode: 0o600 });
+  const toSave = { ...tokens, issuedAt: Date.now() };
+  await writeFile(TOKEN_FILE, JSON.stringify(toSave, null, 2), { mode: 0o600 });
 
   // Bağlantıyı gerçekten doğrula — token dosyası yazmak tek başına kanıt değil.
   oauth2.setCredentials(tokens);
@@ -142,8 +180,9 @@ async function main(): Promise<void> {
     console.log(`\n💡 .env dosyana şunu ekle:  SIGNUP_EMAIL=${profile.data.emailAddress}\n`);
   }
 
-  console.log('\n⚠️  Hatırlatma: OAuth consent screen "Production" modunda mı?');
-  console.log('   "Testing"de kalırsa bu token 7 gün sonra ölür ve otomasyon durur.\n');
+  console.log(`\n⚠️  Hatırlatma: consent screen Testing modunda ise bu token`);
+  console.log(`   ${TESTING_MODE_TOKEN_LIFETIME_DAYS} gün sonra ölecek. Haftada bir`);
+  console.log('   "npm run gmail:auth" çalıştırmayı unutma.\n');
 }
 
 main().catch((err: unknown) => {

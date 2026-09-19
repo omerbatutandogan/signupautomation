@@ -39,9 +39,26 @@ async function gmailClient(): Promise<gmail_v1.Gmail> {
   const cfg = parsed.installed ?? parsed.web;
   if (!cfg) throw new Error(`${CLIENT_FILE} geçersiz`);
 
+  const tokenData = JSON.parse(tokenRaw) as { issuedAt?: number };
+  warnIfTokenStale(tokenData.issuedAt);
+
   const oauth2 = new gmailAuth.OAuth2(cfg.client_id, cfg.client_secret);
-  oauth2.setCredentials(JSON.parse(tokenRaw) as Record<string, unknown>);
+  oauth2.setCredentials(tokenData as Record<string, unknown>);
   return gmail({ version: 'v1', auth: oauth2 });
+}
+
+/**
+ * Test kullanıcısı modunda refresh token 7 günde ölüyor. Gerçek çağrı
+ * başarısız olup "invalid_grant" hatasıyla kafa karıştırmadan önce burada
+ * net bir uyarı basmak, sorunu doğru yerde teşhis ettiriyor.
+ */
+function warnIfTokenStale(issuedAt?: number): void {
+  if (!issuedAt) return;
+  const ageDays = (Date.now() - issuedAt) / (24 * 60 * 60 * 1000);
+  if (ageDays >= 7) {
+    console.warn(`\n⚠️  Token ${ageDays.toFixed(1)} günlük — test kullanıcısı modunda`);
+    console.warn('   muhtemelen ölmüş. Hata alırsan: npm run gmail:auth\n');
+  }
 }
 
 function header(msg: gmail_v1.Schema$Message, name: string): string {
