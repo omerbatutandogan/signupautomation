@@ -66,6 +66,21 @@ function header(msg: gmail_v1.Schema$Message, name: string): string {
   return h?.value ?? '';
 }
 
+/**
+ * format:'raw' isteğinde Gmail API payload.headers'ı DOLDURMAZ — yalnızca
+ * `raw` alanı (ham MIME) döner. Başlıkları o ham içerikten kendimiz
+ * çıkarıyoruz; ikinci bir 'full' isteği atıp kotayı iki katına çıkarmaktansa
+ * bu daha ucuz.
+ */
+function headerFromRaw(rawMime: string, name: string): string {
+  // Başlıklar boş satıra kadar sürer; \r\n veya \n devamlı satırları destekle.
+  const headerBlock = rawMime.split(/\r?\n\r?\n/, 1)[0] ?? '';
+  const re = new RegExp(`^${name}:\\s*(.*(?:\\r?\\n[ \\t]+.*)*)`, 'im');
+  const match = re.exec(headerBlock);
+  if (!match?.[1]) return '';
+  return match[1].replace(/\r?\n[ \t]+/g, ' ').trim();
+}
+
 /** Dosya adı için güvenli slug üretir. */
 function slug(s: string): string {
   return s
@@ -108,18 +123,36 @@ async function main(): Promise<void> {
       format: save ? 'raw' : 'full',
     });
 
-    const from = header(full.data, 'From');
-    const subject = header(full.data, 'Subject');
-    const date = header(full.data, 'Date');
-
-    console.log(`${i + 1}. ${subject || '(konu yok)'}`);
-    console.log(`   Kimden: ${from}`);
-    console.log(`   Tarih:  ${date}`);
+    let from: string;
+    let subject: string;
+    let date: string;
+    let rawBuffer: Buffer | null = null;
 
     if (save && full.data.raw) {
-      const name = `${slug(from.split('@').pop() ?? 'unknown')}-${slug(subject)}.eml`;
+      // format:'raw' payload.headers'ı doldurmuyor — ham MIME'dan çıkar.
+      rawBuffer = Buffer.from(full.data.raw, 'base64url');
+      const rawText = rawBuffer.toString('utf8');
+      from = headerFromRaw(rawText, 'From');
+      subject = headerFromRaw(rawText, 'Subject');
+      date = headerFromRaw(rawText, 'Date');
+    } else {
+      from = header(full.data, 'From');
+      subject = header(full.data, 'Subject');
+      date = header(full.data, 'Date');
+    }
+
+    console.log(`${i + 1}. ${subject || '(konu yok)'}`);
+    console.log(`   Kimden: ${from || '(bilinmiyor)'}`);
+    console.log(`   Tarih:  ${date || '(bilinmiyor)'}`);
+
+    if (save && rawBuffer) {
+      // Mesaj id'sini dosya adına ekle — aynı domain+konudan iki mail
+      // gelirse (ör. iki farklı deneme) birbirinin üstüne yazmasın.
+      const domain = slug(from.split('@').pop()?.replace(/>.*/, '') ?? 'unknown');
+      const shortId = (ref.id ?? '').slice(0, 8);
+      const name = `${domain}-${slug(subject)}-${shortId}.eml`;
       const path = `${SAVE_DIR}/${name}`;
-      await writeFile(path, Buffer.from(full.data.raw, 'base64url'));
+      await writeFile(path, rawBuffer);
       console.log(`   💾 ${path}`);
     }
     console.log();

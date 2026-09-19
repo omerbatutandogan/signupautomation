@@ -77,6 +77,20 @@ describe('scoreLinks', () => {
     expect(scored[0]?.url).toContain('/verify/');
   });
 
+  it('aynı URL birden fazla anchor\'da geçtiğinde tek aday sayar (gerçek AlternativeTo mailinde bulundu)', () => {
+    // Buton hem "Confirm my e-mail" metniyle hem de çıplak URL olarak tekrar
+    // ediyordu; tekilleştirme olmadan bu "iki eşit skorlu aday" sayılıp
+    // yanlışlıkla ManualReviewError'a düşüyordu.
+    const url = 'https://alternativeto.net/api/auth/verify-email?token=abc123def456xyz';
+    const links = [
+      { url, text: 'Confirm my e-mail' },
+      { url, text: url }, // aynı link çıplak metin olarak tekrar
+    ];
+    const scored = scoreLinks(links, 'alternativeto.net');
+    expect(scored).toHaveLength(1);
+    expect(scored[0]?.url).toBe(url);
+  });
+
   it('doğrulama linkini pazarlama linkinin üstüne skorlar', () => {
     const links = [
       { url: 'https://a.com/pricing', text: 'See pricing' },

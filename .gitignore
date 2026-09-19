@@ -14,6 +14,10 @@ artifacts/
 *.sqlite-journal
 *.sqlite-wal
 
+# Gerçek doğrulama mailleri — kişisel e-posta adresi ve geçerli token/kod
+# içerir, asla commit edilmez. .gitkeep ile dizin git'te kalır, içerik hariç.
+test/fixtures/emails/*.eml
+
 # Bağımlılıklar / build
 node_modules/
 dist/

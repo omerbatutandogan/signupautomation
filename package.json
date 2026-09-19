@@ -8,16 +8,17 @@
     "node": ">=22.5.0"
   },
   "scripts": {
-    "cli": "node --experimental-strip-types src/cli.ts",
+    "cli": "tsx src/cli.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "fixtures": "node --experimental-strip-types test/fixture-server.ts",
+    "fixtures": "tsx test/fixture-server.ts",
     "gmail:auth": "node --experimental-strip-types scripts/gmail-auth.ts",
     "mail:recent": "node --experimental-strip-types scripts/fetch-recent.ts",
-    "sheet:import": "node --experimental-strip-types scripts/import-sheet.ts",
-    "record": "node --experimental-strip-types scripts/record.ts"
+    "mail:verify-corpus": "tsx scripts/verify-eml-corpus.ts",
+    "sheet:import": "tsx scripts/import-sheet.ts",
+    "record": "tsx scripts/record.ts"
   },
   "dependencies": {
     "@googleapis/gmail": "^22.0.0",

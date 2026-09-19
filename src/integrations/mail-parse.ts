@@ -147,7 +147,12 @@ export function scoreLinks(
   links: Array<{ url: string; text: string }>,
   siteDomain?: string,
 ): ScoredLink[] {
-  const scored: ScoredLink[] = [];
+  // Aynı URL genelde birden fazla yerde geçer (görünür buton + çıplak metin
+  // tekrarı, logo + buton aynı hedefe gitmesi gibi) — bunlar farklı ADAY
+  // değil, tek bir adayın tekrarıdır. URL bazında tekilleştirip en yüksek
+  // skoru tutmazsak "aynı linkin iki kopyası" yanlışlıkla belirsizlik
+  // (ManualReviewError) sayılır — gerçek bir vakada görüldü (AlternativeTo).
+  const byUrl = new Map<string, number>();
 
   for (const { url, text } of links) {
     if (isNoise(url, text)) continue;
@@ -160,10 +165,14 @@ export function scoreLinks(
     if (siteDomain && registrableDomain(url) === siteDomain) score += 2;
     if (VERIFY_TEXT.test(text)) score += 2;
 
-    if (score > 0) scored.push({ url, score });
+    if (score > 0) {
+      byUrl.set(url, Math.max(byUrl.get(url) ?? 0, score));
+    }
   }
 
-  return scored.sort((a, b) => b.score - a.score);
+  return [...byUrl.entries()]
+    .map(([url, score]) => ({ url, score }))
+    .sort((a, b) => b.score - a.score);
 }
 
 /**

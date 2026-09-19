@@ -1,0 +1,2 @@
+Bu dizin gerçek doğrulama mailleri için (.eml, kişisel bilgi/token içerir,
+gitignore'da). Toplamak için: npm run mail:recent -- 10 --save
