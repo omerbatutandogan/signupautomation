@@ -17,11 +17,13 @@
     "gmail:auth": "node --experimental-strip-types scripts/gmail-auth.ts",
     "mail:recent": "node --experimental-strip-types scripts/fetch-recent.ts",
     "mail:verify-corpus": "tsx scripts/verify-eml-corpus.ts",
+    "inspect": "tsx scripts/inspect-form.ts",
     "sheet:import": "tsx scripts/import-sheet.ts",
     "record": "tsx scripts/record.ts"
   },
   "dependencies": {
     "@googleapis/gmail": "^22.0.0",
+    "better-sqlite3": "^13.0.3",
     "dotenv": "^16.4.7",
     "google-auth-library": "^9.15.0",
     "google-spreadsheet": "^4.1.4",
@@ -31,6 +33,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.5",
     "express": "^4.21.2",

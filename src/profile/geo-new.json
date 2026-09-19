@@ -1,0 +1,28 @@
+{
+  "companyName": "geo.new",
+  "legalName": "Noderan",
+  "website": "https://geo.new",
+  "tagline": "Instant geolocation data for any address",
+  "descriptions": {
+    "short": "Instant geolocation and address data through a simple API.",
+    "medium": "geo.new turns any address into structured geolocation data with a single API call. Fast, accurate, and built for developers.",
+    "long": "geo.new is a developer-first geolocation API that turns any address into structured, accurate location data with a single request. It handles address parsing, normalization, geocoding and reverse geocoding, returning clean JSON you can use immediately. Built for teams who need dependable location data without wrestling with inconsistent formats or complicated setup. Integration takes minutes and the response shape stays stable."
+  },
+  "category": {
+    "primary": "Developer Tools",
+    "aliases": ["API", "Developer Tools", "SaaS", "Data", "Geolocation", "Productivity", "Software", "Other"]
+  },
+  "logo": {
+    "512": "assets/logo-512.png",
+    "256": "assets/logo-256.png"
+  },
+  "contact": {
+    "firstName": "John",
+    "lastName": "Smith",
+    "role": "Founder",
+    "email": "johnkevinsmith0@gmail.com"
+  },
+  "socials": {},
+  "pricing": "freemium",
+  "foundedYear": 2026
+}

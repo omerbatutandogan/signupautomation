@@ -1,0 +1,226 @@
+/**
+ * SQLite ledger — kilit, idempotency ve kimlik bilgisi kaydı.
+ *
+ * Kilidin SQLite'ta olmasının sebebi: INSERT atomik. Sheet'te atomik
+ * karşılaştır-değiştir yok, read-modify-write yarışı var — o yüzden Sheet
+ * (Faz 2'de) yalnızca insan görünürlüğü için, otorite burası.
+ *
+ * better-sqlite3 kullanılıyor: node:sqlite (Node 22 yerleşik) denendi ama
+ * vitest'in Vite tabanlı transform hattı yerleşik modülü çözemiyor
+ * ("Failed to load url sqlite") ve testler hiç çalışmıyordu. Test
+ * edilemeyen bir kilit mekanizması, idempotency garantisi vermez.
+ */
+
+import Database from 'better-sqlite3';
+import type { Database as DatabaseType } from 'better-sqlite3';
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { env } from '../config.js';
+import type { SiteId, TerminalStatus } from '../core/types.js';
+
+const DB_PATH = 'data/ledger.sqlite';
+
+export interface AttemptRow {
+  id: number;
+  site_id: string;
+  run_id: string;
+  status: string;
+  started_at: number;
+  finished_at: number | null;
+  note: string | null;
+  terminal: number;
+}
+
+export interface CredentialRow {
+  site_id: string;
+  email: string;
+  username: string;
+  pw_version: number;
+  created_at: number;
+  profile_url: string | null;
+}
+
+/** Bir daha otomatik denenmeyecek sonuçlar. */
+const TERMINAL_RESULTS: ReadonlySet<TerminalStatus> = new Set<TerminalStatus>([
+  'completed',
+  'failed',
+  'manual',
+]);
+
+export class Ledger {
+  private readonly db: DatabaseType;
+
+  constructor(path: string = DB_PATH) {
+    mkdirSync(dirname(path), { recursive: true });
+    this.db = new Database(path);
+    this.db.pragma('journal_mode = WAL');
+    this.migrate();
+    this.reapStaleLocks();
+  }
+
+  private migrate(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS locks (
+        site_id    TEXT PRIMARY KEY,
+        run_id     TEXT NOT NULL,
+        claimed_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS attempts (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        site_id     TEXT NOT NULL,
+        run_id      TEXT NOT NULL,
+        status      TEXT NOT NULL,
+        started_at  INTEGER NOT NULL,
+        finished_at INTEGER,
+        note        TEXT,
+        terminal    INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS idx_attempts_site ON attempts(site_id);
+      CREATE INDEX IF NOT EXISTS idx_attempts_started ON attempts(started_at);
+
+      CREATE TABLE IF NOT EXISTS credentials (
+        site_id     TEXT PRIMARY KEY,
+        email       TEXT NOT NULL,
+        username    TEXT NOT NULL,
+        pw_version  INTEGER NOT NULL DEFAULT 1,
+        created_at  INTEGER NOT NULL,
+        profile_url TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS seen_messages (
+        message_id TEXT PRIMARY KEY,
+        site_id    TEXT NOT NULL,
+        seen_at    INTEGER NOT NULL
+      );
+    `);
+  }
+
+  /** TTL'i dolmuş kilitleri temizler — çökmüş çalıştırmalar siteyi kilitli bırakmasın. */
+  private reapStaleLocks(): number {
+    const stmt = this.db.prepare('DELETE FROM locks WHERE expires_at < ?');
+    return stmt.run(Date.now()).changes as number;
+  }
+
+  // ── Kilit ───────────────────────────────────────────────────────────────
+
+  /** Atomik kilit alma. false → başka bir çalıştırma bu siteyi işliyor. */
+  tryClaim(siteId: SiteId, runId: string, ttlMs: number = env.LOCK_TTL_MS): boolean {
+    const now = Date.now();
+    try {
+      this.db
+        .prepare('INSERT INTO locks (site_id, run_id, claimed_at, expires_at) VALUES (?, ?, ?, ?)')
+        .run(siteId, runId, now, now + ttlMs);
+      return true;
+    } catch {
+      // UNIQUE ihlali — kilit zaten alınmış.
+      return false;
+    }
+  }
+
+  release(siteId: SiteId): void {
+    this.db.prepare('DELETE FROM locks WHERE site_id = ?').run(siteId);
+  }
+
+  activeLock(siteId: SiteId): { run_id: string; expires_at: number } | null {
+    const row = this.db
+      .prepare('SELECT run_id, expires_at FROM locks WHERE site_id = ?')
+      .get(siteId) as { run_id: string; expires_at: number } | undefined;
+    return row ?? null;
+  }
+
+  // ── Denemeler ───────────────────────────────────────────────────────────
+
+  startAttempt(siteId: SiteId, runId: string): number {
+    const result = this.db
+      .prepare('INSERT INTO attempts (site_id, run_id, status, started_at) VALUES (?, ?, ?, ?)')
+      .run(siteId, runId, 'running', Date.now());
+    return Number(result.lastInsertRowid);
+  }
+
+  finishAttempt(attemptId: number, status: TerminalStatus, note?: string): void {
+    this.db
+      .prepare('UPDATE attempts SET status = ?, finished_at = ?, note = ?, terminal = ? WHERE id = ?')
+      .run(status, Date.now(), note ?? null, TERMINAL_RESULTS.has(status) ? 1 : 0, attemptId);
+  }
+
+  /**
+   * Site daha önce terminal bir sonuca ulaştı mı?
+   * Sheet yanlışlıkla sıfırlansa bile tekrar kayıt denemesini engeller.
+   */
+  terminalResult(siteId: SiteId): { status: string; note: string | null } | null {
+    const row = this.db
+      .prepare(
+        'SELECT status, note FROM attempts WHERE site_id = ? AND terminal = 1 ORDER BY finished_at DESC LIMIT 1',
+      )
+      .get(siteId) as { status: string; note: string | null } | undefined;
+    return row ?? null;
+  }
+
+  /** Bugün başlatılan, atlanmamış deneme sayısı — günlük limit kapısı. */
+  countToday(): number {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM attempts
+         WHERE started_at >= ? AND status NOT LIKE 'skipped%'`,
+      )
+      .get(startOfDay.getTime()) as { n: number };
+    return row.n;
+  }
+
+  recentAttempts(limit = 20): AttemptRow[] {
+    return this.db
+      .prepare('SELECT * FROM attempts ORDER BY started_at DESC LIMIT ?')
+      .all(limit) as unknown as AttemptRow[];
+  }
+
+  // ── Kimlik bilgileri ────────────────────────────────────────────────────
+
+  /**
+   * Submit'ten ÖNCE çağrılır: çökme halinde hangi kimlikle kayıt denendiği
+   * kaybolmasın (şifre türetilebilir ama pw_version bilinmeli).
+   */
+  saveCredentials(siteId: SiteId, email: string, username: string, pwVersion: number): void {
+    this.db
+      .prepare(
+        `INSERT INTO credentials (site_id, email, username, pw_version, created_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(site_id) DO UPDATE SET email = ?, username = ?, pw_version = ?`,
+      )
+      .run(siteId, email, username, pwVersion, Date.now(), email, username, pwVersion);
+  }
+
+  setProfileUrl(siteId: SiteId, url: string): void {
+    this.db.prepare('UPDATE credentials SET profile_url = ? WHERE site_id = ?').run(url, siteId);
+  }
+
+  credentials(siteId: SiteId): CredentialRow | null {
+    const row = this.db.prepare('SELECT * FROM credentials WHERE site_id = ?').get(siteId) as
+      | CredentialRow
+      | undefined;
+    return row ?? null;
+  }
+
+  // ── Görülen mailler ─────────────────────────────────────────────────────
+
+  /** Yeniden çalıştırma bayat bir doğrulama mailini tüketmesin. */
+  markMessageSeen(messageId: string, siteId: SiteId): void {
+    this.db
+      .prepare('INSERT OR IGNORE INTO seen_messages (message_id, site_id, seen_at) VALUES (?, ?, ?)')
+      .run(messageId, siteId, Date.now());
+  }
+
+  hasSeenMessage(messageId: string): boolean {
+    const row = this.db
+      .prepare('SELECT 1 AS hit FROM seen_messages WHERE message_id = ?')
+      .get(messageId) as { hit: number } | undefined;
+    return row !== undefined;
+  }
+
+  close(): void {
+    this.db.close();
+  }
+}
