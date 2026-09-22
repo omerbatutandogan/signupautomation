@@ -42,6 +42,10 @@ const EnvSchema = z.object({
   HEADLESS: boolish(false),
 
   DAILY_LIMIT: intish(12),
+  // Siteler arası bekleme — insan-benzeri trafik deseni, tek IP'den ani
+  // yüksek hacim fraud tespitinde işaretlenmesin.
+  MIN_GAP_MINUTES: intish(6),
+  MAX_GAP_MINUTES: intish(18),
   EMAIL_TIMEOUT_MS: intish(600_000),
   CAPTCHA_TIMEOUT_MS: intish(900_000),
   LOCK_TTL_MS: intish(2_700_000),

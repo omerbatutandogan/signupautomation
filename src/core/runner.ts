@@ -34,6 +34,17 @@ export interface RunOptions {
   force?: boolean;
   log: Logger;
   ledger: Ledger;
+  /**
+   * Sheet geri bildirimi — opsiyonel. Verilmezse runner Sheet'siz çalışır.
+   * Hataları çağıran taraf yutar; Sheet otorite değil, görünürlük katmanı.
+   */
+  onProgress?: {
+    started?(runId: string): Promise<void>;
+    finished?(
+      outcome: RunOutcome,
+      identity?: { email: string; username: string; profileUrl?: string },
+    ): Promise<void>;
+  };
 }
 
 export interface RunOutcome {
@@ -54,36 +65,59 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
 
   const adapter = await loadAdapter(siteId);
 
+  /**
+   * Erken çıkışlarda da Sheet'e yazar. Aksi halde atlanan siteler Sheet'te
+   * boş görünür ve "neden işlenmedi?" sorusu cevapsız kalır.
+   */
+  const exitEarly = async (outcome: RunOutcome): Promise<RunOutcome> => {
+    try {
+      await opts.onProgress?.finished?.(outcome);
+    } catch (err) {
+      log.warn({ err: (err as Error).message }, 'Sheet yazımı başarısız');
+    }
+    return outcome;
+  };
+
   // 1. Risk kapısı — ToS koruması. Ağ isteğinden ÖNCE.
   if (adapter.risk === 'high') {
     log.warn('Yüksek riskli site — ToS gereği otomasyon dışı, manuel listeye');
-    return { status: 'skipped_high_risk', note: 'ToS otomatik kaydı yasaklıyor' };
+    return exitEarly({ status: 'skipped_high_risk', note: 'ToS otomatik kaydı yasaklıyor' });
   }
 
   // 2. Terminal sonuç kontrolü — daha önce bitmişse tekrar deneme.
   const previous = ledger.terminalResult(siteId);
   if (previous && !opts.force) {
     log.info({ previous }, 'Site zaten terminal durumda (--force ile aşılabilir)');
-    return { status: 'skipped_terminal', note: `önceki sonuç: ${previous.status}` };
+    return exitEarly({ status: 'skipped_terminal', note: `önceki sonuç: ${previous.status}` });
   }
 
   // 3. Günlük limit — insan-benzeri hacim.
   const todayCount = ledger.countToday();
   if (todayCount >= env.DAILY_LIMIT) {
     log.info({ todayCount, limit: env.DAILY_LIMIT }, 'Günlük limit doldu');
-    return { status: 'skipped_limit', note: `bugün ${todayCount}/${env.DAILY_LIMIT}` };
+    return exitEarly({ status: 'skipped_limit', note: `bugün ${todayCount}/${env.DAILY_LIMIT}` });
   }
 
   // 4. Kilit — atomik, aynı siteyi iki kez işlemeyi engeller.
   if (!ledger.tryClaim(siteId, runId)) {
     const lock = ledger.activeLock(siteId);
     log.warn({ lock }, 'Site başka bir çalıştırma tarafından kilitli');
-    return { status: 'skipped_locked', note: `kilit sahibi: ${lock?.run_id ?? '?'}` };
+    return exitEarly({ status: 'skipped_locked', note: `kilit sahibi: ${lock?.run_id ?? '?'}` });
   }
 
   const attemptId = ledger.startAttempt(siteId, runId);
   let outcome: RunOutcome = { status: 'error' };
   let browser: Awaited<ReturnType<typeof launchContext>> | null = null;
+  // Sheet'e yazmak için finally'de gerekiyor; try içinde tanımlanınca erişilemez.
+  let identitySnapshot: { email: string; username: string; profileUrl?: string } | undefined;
+
+  // Sheet'i "İşleniyor" yap — SQLite claim'inden SONRA, yarış olmasın.
+  // Sheet hatası çalıştırmayı düşürmemeli.
+  try {
+    await opts.onProgress?.started?.(runId);
+  } catch (err) {
+    log.warn({ err: (err as Error).message }, 'Sheet başlangıç yazımı başarısız');
+  }
 
   try {
     const profile = await loadProfile();
@@ -99,6 +133,7 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
 
     // Submit'ten ÖNCE kaydet: çökme halinde hangi kimlikle denendiği kaybolmasın.
     ledger.saveCredentials(siteId, identity.email, identity.username, identity.passwordVersion);
+    identitySnapshot = { email: identity.email, username: identity.username };
 
     browser = await launchContext(siteId);
     const artifacts = createArtifacts(browser.page, runId, siteId);
@@ -171,6 +206,7 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
     const ok = (await adapter.confirmSuccess?.(ctx)) ?? true;
     if (ok) {
       ledger.setProfileUrl(siteId, browser.page.url());
+      if (identitySnapshot) identitySnapshot.profileUrl = browser.page.url();
       outcome = { status: 'completed', artifactsDir: artifacts.dir };
     } else {
       await captureFailure(artifacts, 'confirm-failed');
@@ -208,6 +244,14 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
     // Kilit HER koşulda bırakılır — bırakılmazsa site TTL boyunca bloke olur.
     ledger.release(siteId);
     await browser?.close();
+
+    // Sheet'e sonucu yaz. Hata yutulur: ledger zaten doğru kaydı tuttu,
+    // Sheet yazımının başarısızlığı çalıştırmayı başarısız yapmamalı.
+    try {
+      await opts.onProgress?.finished?.(outcome, identitySnapshot);
+    } catch (err) {
+      log.warn({ err: (err as Error).message }, 'Sheet sonuç yazımı başarısız');
+    }
   }
 }
 

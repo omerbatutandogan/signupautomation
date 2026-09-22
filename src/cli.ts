@@ -34,12 +34,16 @@ Komutlar:
   run-one <siteId>        Tek siteyi uçtan uca işle
     --dry-run             Selector'ları doğrula, submit etme
     --force               Terminal durumu aşıp tekrar dene
+  run-batch [N]           Sheet'ten N siteyi sırayla işle (varsayılan 5)
+    --dry-run             Submit etme, selector doğrula
+    --no-wait             Siteler arası beklemeyi atla (test için)
   status                  Son denemeler ve ledger özeti
   list                    Tanımlı site config'lerini listele
   unlock <siteId>         Takılı kilidi temizle
   password <siteId>       Türetilmiş şifreyi yazdır
   check-gmail             Gmail bağlantısını doğrula
   sheet                   Sheet bağlantısını ve kolonları kontrol et
+    --add-columns         Eksik takip kolonlarını Sheet'e ekle
 `);
 }
 
@@ -135,7 +139,121 @@ async function cmdPassword(siteId: string): Promise<number> {
   return 0;
 }
 
-async function cmdSheet(): Promise<number> {
+/** [min, max] dakika arası bekleme — insan-benzeri aralık. */
+function sleepMinutes(min: number, max: number): Promise<void> {
+  const ms = (Math.random() * (max - min) + min) * 60_000;
+  logger.info(`Sonraki siteye ${Math.round(ms / 60_000)} dakika sonra geçilecek`);
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function cmdRunBatch(flags: Set<string>, positional: string[]): Promise<number> {
+  const { SheetClient } = await import('./integrations/sheet.js');
+  const { loadSiteConfig } = await import('./adapters/registry.js');
+
+  const limitArg = positional.find((a) => /^\d+$/.test(a));
+  const limit = limitArg ? Number(limitArg) : 5;
+  const dryRun = flags.has('--dry-run');
+  const noWait = flags.has('--no-wait');
+
+  const sheet = await SheetClient.create(logger);
+  if (!sheet) {
+    console.error('❌ Sheet bağlanamadı — run-batch Sheet gerektiriyor.');
+    console.error('   Tek site için: run-one <siteId>');
+    return 1;
+  }
+
+  const pending = await sheet.readPending();
+  console.log(`\nSheet'te işlenmeye uygun: ${pending.length} satır`);
+
+  // Yalnızca config'i yazılmış siteler işlenebilir.
+  const runnable: typeof pending = [];
+  for (const row of pending) {
+    if (runnable.length >= limit) break;
+    const cfg = await loadSiteConfig(row.siteId).catch(() => null);
+    if (cfg) runnable.push(row);
+  }
+
+  if (runnable.length === 0) {
+    console.log('\nConfig\'i yazılmış işlenebilir site yok.');
+    console.log('Yeni config için: npm run inspect -- <url>');
+    return 0;
+  }
+
+  console.log(`Config'i olan ve işlenecek: ${runnable.length}\n`);
+
+  const ledger = new Ledger();
+  let completed = 0;
+  let failed = 0;
+  let todayTotal = 0;
+
+  try {
+    for (const [i, row] of runnable.entries()) {
+      if (ledger.countToday() >= env.DAILY_LIMIT) {
+        console.log(`\n⏸️  Günlük limit doldu (${env.DAILY_LIMIT}) — durduruluyor.`);
+        break;
+      }
+
+      console.log(`\n[${i + 1}/${runnable.length}] ${row.siteId} (${row.website})`);
+
+      const outcome = await runSite(row.siteId, {
+        log: logger,
+        ledger,
+        dryRun,
+        onProgress: {
+          started: (runId) => sheet.markInProgress(row, runId),
+          finished: async (result, identity) => {
+            // skipped_terminal "zaten bitmiş" demek ama nasıl bittiğini
+            // taşımıyor — gerçek sonucu ledger'dan alıp Sheet'e yaz.
+            if (result.status === 'skipped_terminal') {
+              const prev = ledger.terminalResult(row.siteId);
+              const creds = ledger.credentials(row.siteId);
+              if (prev) {
+                await sheet.writeOutcome(
+                  row,
+                  { status: prev.status as typeof result.status, note: prev.note ?? undefined },
+                  creds
+                    ? {
+                        email: creds.email,
+                        username: creds.username,
+                        profileUrl: creds.profile_url ?? undefined,
+                      }
+                    : undefined,
+                );
+                return;
+              }
+            }
+            await sheet.writeOutcome(row, result, identity);
+          },
+        },
+      });
+
+      const icon =
+        outcome.status === 'completed' ? '✅' : outcome.status.startsWith('skipped') ? '⏭️' : '❌';
+      console.log(`${icon} ${row.siteId}: ${outcome.status}${outcome.note ? ` — ${outcome.note}` : ''}`);
+
+      if (outcome.status === 'completed') completed++;
+      else if (!outcome.status.startsWith('skipped')) failed++;
+
+      // Son siteden sonra beklemeye gerek yok.
+      const isLast = i === runnable.length - 1;
+      if (!isLast && !noWait && !dryRun) {
+        await sleepMinutes(env.MIN_GAP_MINUTES, env.MAX_GAP_MINUTES);
+      }
+    }
+    todayTotal = ledger.countToday();
+  } finally {
+    ledger.close();
+  }
+
+  console.log(`\n── Özet ──`);
+  console.log(`   Tamamlanan: ${completed}`);
+  console.log(`   Başarısız:  ${failed}`);
+  console.log(`   Bugün toplam: ${todayTotal}/${env.DAILY_LIMIT}`);
+
+  return failed > 0 ? 1 : 0;
+}
+
+async function cmdSheet(flags: Set<string>): Promise<number> {
   const { SheetClient, COLUMNS } = await import('./integrations/sheet.js');
   const client = await SheetClient.create(logger);
 
@@ -154,10 +272,15 @@ async function cmdSheet(): Promise<number> {
   console.log(`   İşlenmeye uygun: ${pending.length}`);
 
   if (missing.length > 0) {
-    console.log(`\n⚠️  Eksik kolonlar (kod bunlara yazamaz):`);
-    for (const c of missing) console.log(`     ${c}`);
-    console.log(`\n   Bu kolonları Sheet'e eklersen durum takibi çalışır.`);
-    console.log(`   Zorunlu olanlar: ${COLUMNS.status}, ${COLUMNS.note}`);
+    if (flags.has('--add-columns')) {
+      const added = await client.ensureColumns();
+      console.log(`\n✅ ${added.length} kolon eklendi: ${added.join(', ')}`);
+    } else {
+      console.log(`\n⚠️  Eksik kolonlar (kod bunlara yazamaz):`);
+      for (const c of missing) console.log(`     ${c}`);
+      console.log(`\n   Otomatik eklemek için: run cli -- sheet --add-columns`);
+      console.log(`   Zorunlu olanlar: ${COLUMNS.status}, ${COLUMNS.note}`);
+    }
   }
 
   console.log('\nİlk 10 satır:');
@@ -234,7 +357,10 @@ async function main(): Promise<void> {
       code = await cmdCheckGmail();
       break;
     case 'sheet':
-      code = await cmdSheet();
+      code = await cmdSheet(flags);
+      break;
+    case 'run-batch':
+      code = await cmdRunBatch(flags, positional);
       break;
     default:
       usage();

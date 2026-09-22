@@ -28,16 +28,22 @@ export const SHEET_STATUS = {
   EMAIL_TIMEOUT: 'Doğrulama Zaman Aşımı',
 } as const;
 
-/** TerminalStatus → Sheet'te gösterilecek metin. */
-const STATUS_LABEL: Record<TerminalStatus, string> = {
+/**
+ * TerminalStatus → Sheet'te gösterilecek metin.
+ *
+ * skipped_terminal burada YOK: "zaten bitmiş" demek, ama nasıl bittiğini
+ * (başarı mı hata mı) bu durum taşımıyor. Sheet'teki mevcut değeri
+ * bozmamak için writeOutcome onu atlıyor.
+ */
+const STATUS_LABEL: Partial<Record<TerminalStatus, string>> = {
   completed: SHEET_STATUS.DONE,
   failed: SHEET_STATUS.FAILED,
   error: SHEET_STATUS.ERROR,
   manual: SHEET_STATUS.MANUAL,
   email_timeout: SHEET_STATUS.EMAIL_TIMEOUT,
+  // Kilit/limit geçici — satır bekliyor durumunda kalmalı.
   skipped_locked: SHEET_STATUS.PENDING,
   skipped_limit: SHEET_STATUS.PENDING,
-  skipped_terminal: SHEET_STATUS.DONE,
   skipped_high_risk: SHEET_STATUS.MANUAL,
 };
 
@@ -132,23 +138,57 @@ export class SheetClient {
       await client.loadHeaders();
       return client;
     } catch (err) {
-      log.warn({ err: (err as Error).message }, 'Sheet bağlantısı kurulamadı — Sheet’siz devam');
+      // Mesaj çok satırlı olabiliyor (sekme listesi gibi) — pino tek satıra
+      // sıkıştırmasın diye doğrudan yazdırıyoruz.
+      log.warn('Sheet bağlantısı kurulamadı — Sheet’siz devam');
+      console.error(`   ${(err as Error).message}`);
       return null;
     }
   }
 
+  /** Sheet'teki sekme adlarını döner — yanlış SHEET_TAB teşhisinde kullanılır. */
+  async tabNames(): Promise<string[]> {
+    const meta = await this.api.spreadsheets.get({ spreadsheetId: this.spreadsheetId });
+    return (meta.data.sheets ?? []).flatMap((s) => {
+      const t = s.properties?.title;
+      return t ? [t] : [];
+    });
+  }
+
   /** Başlık satırını okuyup kolon indekslerini çıkarır. */
   private async loadHeaders(): Promise<void> {
-    const res = await this.api.spreadsheets.values.get({
-      spreadsheetId: this.spreadsheetId,
-      range: `${this.tab}!1:1`,
-    });
-    const row = res.data.values?.[0] ?? [];
-    this.headers = new Map(row.map((h, i) => [String(h).trim(), i]));
+    let row: string[];
+    try {
+      const res = await this.api.spreadsheets.values.get({
+        spreadsheetId: this.spreadsheetId,
+        range: `${this.tab}!1:1`,
+      });
+      row = (res.data.values?.[0] ?? []).map((h) => String(h));
+    } catch (err) {
+      // "Unable to parse range" = sekme adı yanlış. Tahmin ettirmek yerine
+      // mevcut sekmeleri göster.
+      const message = (err as Error).message;
+      if (/parse range/i.test(message)) {
+        const tabs = await this.tabNames().catch(() => []);
+        throw new Error(
+          `Sekme bulunamadı: "${this.tab}".` +
+            (tabs.length > 0
+              ? `\n   Mevcut sekmeler: ${tabs.map((t) => `"${t}"`).join(', ')}` +
+                `\n   .env'de SHEET_TAB değerini bunlardan biriyle değiştir.`
+              : ''),
+        );
+      }
+      throw err;
+    }
+
+    this.headers = new Map(row.map((h, i) => [h.trim(), i]));
 
     const missing = [COLUMNS.name, COLUMNS.website].filter((c) => !this.headers.has(c));
     if (missing.length > 0) {
-      throw new Error(`Sheet'te zorunlu kolonlar yok: ${missing.join(', ')}`);
+      throw new Error(
+        `Sekme "${this.tab}" içinde zorunlu kolonlar yok: ${missing.join(', ')}` +
+          `\n   Bulunan başlıklar: ${row.filter(Boolean).join(', ') || '(boş satır)'}`,
+      );
     }
   }
 
@@ -243,7 +283,11 @@ export class SheetClient {
     outcome: { status: TerminalStatus; note?: string },
     identity?: { email: string; username: string; profileUrl?: string },
   ): Promise<void> {
-    await this.writeCell(row.rowNumber, COLUMNS.status, STATUS_LABEL[outcome.status]);
+    const label = STATUS_LABEL[outcome.status];
+    // skipped_terminal gibi durumlarda etiket yok — mevcut değeri koru.
+    if (label) {
+      await this.writeCell(row.rowNumber, COLUMNS.status, label);
+    }
     await this.writeCell(row.rowNumber, COLUMNS.lastRun, new Date().toLocaleString('tr-TR'));
     await this.writeCell(row.rowNumber, COLUMNS.note, outcome.note?.slice(0, 200) ?? '');
 
@@ -258,6 +302,31 @@ export class SheetClient {
 
   async writeRisk(row: SheetRow, risk: RiskLevel): Promise<void> {
     await this.writeCell(row.rowNumber, COLUMNS.risk, risk);
+  }
+
+  /**
+   * Eksik takip kolonlarını başlık satırının sonuna ekler.
+   * Mevcut kolonlara dokunmaz — yalnızca sağa ekleme yapar.
+   */
+  async ensureColumns(): Promise<string[]> {
+    const missing = this.missingColumns();
+    if (missing.length === 0) return [];
+
+    const startIndex = Math.max(...this.headers.values()) + 1;
+    const range = `${this.tab}!${columnLetter(startIndex)}1:${columnLetter(
+      startIndex + missing.length - 1,
+    )}1`;
+
+    await this.api.spreadsheets.values.update({
+      spreadsheetId: this.spreadsheetId,
+      range,
+      valueInputOption: 'RAW',
+      requestBody: { values: [missing] },
+    });
+
+    // Yerel başlık haritasını güncelle ki aynı oturumda yazım çalışsın.
+    missing.forEach((name, i) => this.headers.set(name, startIndex + i));
+    return missing;
   }
 }
 
