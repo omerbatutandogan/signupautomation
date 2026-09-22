@@ -194,6 +194,15 @@ async function runStep(ctx: SignupContext, step: Step, index: number): Promise<v
     }
 
     case 'expect': {
+      // DRY-RUN'da submit atlandığı için submit-sonrası içerik hiç
+      // görünmez. expect'i zorlamak, selector'ları doğru bulmuş bir
+      // config'i yanlışlıkla "başarısız" saymaya yol açıyordu.
+      // Dry-run'ın amacı selector doğrulaması, submit sonucu değil.
+      if (ctx.dryRun) {
+        log.info('DRY-RUN: expect adımı atlandı (submit edilmedi)');
+        return;
+      }
+
       const found = await Promise.race([
         ...(step.anyOf ?? []).map(async (selector) => {
           await ctx.page

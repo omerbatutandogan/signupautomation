@@ -36,6 +36,12 @@
     },
     {
       "type": "fill",
+      "selector": "input[name='user_data[country_name]']",
+      "value": "Turkey",
+      "optional": true
+    },
+    {
+      "type": "fill",
       "selector": "#companies",
       "field": "companyName",
       "optional": true
@@ -68,5 +74,5 @@
   "verification": {
     "mode": "link"
   },
-  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. TODO eşlenmeyen zorunlu alanlar: input[name='user_data[country_name]'] (zorunlu, text)."
+  "notes": "Doğrulandı (dry-run, 22.09.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. country_name elle sabit değerle dolduruldu (Turkey) — otomatik eşlenemiyordu."
 }
