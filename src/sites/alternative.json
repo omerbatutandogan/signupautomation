@@ -49,12 +49,11 @@
     {
       "type": "expect",
       "anyOf": [
+        "text=/unverified e-?mail/i",
+        "text=/pending user/i",
+        "text=/resend verification/i",
         "text=/check your (e-?mail|inbox)/i",
-        "text=/verify your e-?mail/i",
-        "text=/confirm/i",
-        "text=/welcome/i",
-        "text=/dashboard/i",
-        "text=/thank/i"
+        "text=/verify your e-?mail/i"
       ],
       "timeoutMs": 25000
     }
@@ -62,5 +61,12 @@
   "verification": {
     "mode": "link"
   },
-  "notes": "Doğrulandı (dry-run, 22.09.2026) Keşif: link-follow, 1 sıçrama, güven: high. Captcha görülmedi."
+  "notes": "Doğrulandı (dry-run, 22.09.2026) Keşif: link-follow, 1 sıçrama, güven: high. Captcha görülmedi. Submit sonrası doğrudan dashboard'a düşüyor (\"Pending User\" + \"Unverified Email-Address\" rozeti); ara \"check your email\" sayfası YOK — expect buna göre ayarlandı.",
+  "success": {
+    "anyOf": [
+      "text=/total submissions/i",
+      "text=/submit software/i",
+      "text=/overview/i"
+    ]
+  }
 }
