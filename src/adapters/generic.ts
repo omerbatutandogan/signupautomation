@@ -127,7 +127,25 @@ async function runStep(ctx: SignupContext, step: Step, index: number): Promise<v
       await typeHuman(locator, value);
 
       // Sessiz kırpılma klasik görünmez hata — yazdıktan sonra doğrula.
-      const actual = await locator.inputValue().catch(() => value);
+      let actual = await locator.inputValue().catch(() => value);
+
+      // Alan TAMAMEN boşsa yazma başarısız olmuş demektir (JS ile
+      // sıfırlanmış, gizli overlay, React controlled input vb.).
+      // Bir kez daha dene; sessizce geçmek boş şifreyle submit demek.
+      if (actual === '' && value !== '') {
+        log.warn({ selector: step.selector }, 'Alan boş kaldı — tekrar deneniyor');
+        await ctx.page.waitForTimeout(500);
+        await typeHuman(locator, value);
+        actual = await locator.inputValue().catch(() => '');
+      }
+
+      if (actual === '' && value !== '') {
+        throw new PermanentError(`Alan doldurulamadı (boş kaldı): ${step.selector}`, {
+          selector: step.selector,
+          field: step.field,
+        });
+      }
+
       if (actual !== value) {
         log.warn(
           { expected: value.length, actual: actual.length },

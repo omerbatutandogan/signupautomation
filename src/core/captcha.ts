@@ -79,6 +79,17 @@ export async function detectCaptcha(
   page: Page,
   network?: CaptchaNetworkState,
 ): Promise<CaptchaKind | null> {
+  // FRAME kontrolü ÖNCE: modern Turnstile/hCaptcha widget'ları Shadow DOM
+  // içinde yaşıyor ve document.querySelectorAll('iframe') onları GÖRMÜYOR.
+  // Gerçek vaka (BetaList): DOM'da sıfır iframe, ama Playwright frame
+  // listesinde challenges.cloudflare.com/.../turnstile/... duruyordu.
+  for (const frame of page.frames()) {
+    const url = frame.url();
+    if (/challenges\.cloudflare\.com/.test(url)) return 'turnstile';
+    if (/hcaptcha\.com/.test(url)) return 'hcaptcha';
+    if (/google\.com\/recaptcha/.test(url)) return 'recaptcha_v2';
+  }
+
   for (const kind of CAPTCHA_KINDS) {
     for (const sel of DOM_MARKERS[kind]) {
       if ((await page.locator(sel).count()) > 0) return kind;
@@ -113,14 +124,32 @@ export async function needsHumanIntervention(
 
   await page.waitForTimeout(settleMs);
 
+  // Turnstile için en kesin sinyal: token üretildi mi?
+  // Widget Shadow DOM'da olduğu için görünürlük kontrolü güvenilmez
+  // (BetaList'te DOM'da hiç iframe yoktu). Token yoksa çözülmemiş
+  // demektir ve submit reddedilir — insan müdahalesi gerekir.
+  if (kind === 'turnstile') {
+    const token = await page
+      .evaluate(
+        () =>
+          (document.querySelector('input[name="cf-turnstile-response"]') as HTMLInputElement | null)
+            ?.value ?? '',
+      )
+      .catch(() => '');
+    if (token.length > 0) return false; // çözülmüş, insana gerek yok
+    // Token yok: widget var ama çözülmemiş.
+    return true;
+  }
+
   for (const sel of INTERACTIVE_MARKERS) {
     const loc = page.locator(sel).first();
     if ((await loc.count()) === 0) continue;
     if (await loc.isVisible().catch(() => false)) return true;
   }
 
-  // Turnstile/hCaptcha görünür onay kutusu da tıklama isteyebilir.
-  if (kind === 'turnstile' || kind === 'hcaptcha') {
+  // hCaptcha görünür onay kutusu da tıklama isteyebilir.
+  // (Turnstile yukarıda token kontrolüyle zaten karara bağlandı.)
+  if (kind === 'hcaptcha') {
     for (const sel of DOM_MARKERS[kind]) {
       const loc = page.locator(sel).first();
       if ((await loc.count()) === 0) continue;
@@ -155,6 +184,22 @@ export async function waitForCaptchaCleared(
 
     // Sayfa gezindiyse form gönderilmiş demektir.
     if (page.url() !== startUrl) return true;
+
+    // Turnstile: token üretildiyse insan çözmüş demektir. Widget Shadow
+    // DOM'da olduğu için görünürlük kontrolü bunu kaçırıyor.
+    if (kind === 'turnstile') {
+      const token = await page
+        .evaluate(
+          () =>
+            (
+              document.querySelector(
+                'input[name="cf-turnstile-response"]',
+              ) as HTMLInputElement | null
+            )?.value ?? '',
+        )
+        .catch(() => '');
+      if (token.length > 0) return true;
+    }
 
     let anyVisible = false;
     for (const sel of markers) {

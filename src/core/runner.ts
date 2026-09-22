@@ -161,7 +161,12 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
     }
 
     if (opts.dryRun) {
-      log.info('DRY-RUN tamamlandı — selector\'lar doğrulandı, submit edilmedi');
+      // Dry-run'da da ekran görüntüsü al: "selector bulundu" demek
+      // "alan gerçekten doldu" demek değil. BetaList'te şifre alanları
+      // selector'ı bulunmasına rağmen boş kalıyordu ve bu yalnızca
+      // ekran görüntüsünden anlaşıldı.
+      const shot = await artifacts.shot('dry-run-final');
+      log.info({ shot }, 'DRY-RUN tamamlandı — selector\'lar doğrulandı, submit edilmedi');
       outcome = { status: 'completed', note: 'dry-run', artifactsDir: artifacts.dir };
       return outcome;
     }
