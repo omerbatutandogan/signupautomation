@@ -20,7 +20,10 @@ import { analyzeForm } from '../src/discovery/analyze-form.js';
 import { generateConfig, riskFor } from '../src/discovery/generate-config.js';
 import { listSiteIds } from '../src/adapters/registry.js';
 
-const PROGRESS_FILE = 'data/discovery.json';
+// Sekme başına ayrı ilerleme dosyası: tek dosya kullanılırsa sekme
+// değiştirince önceki sekmenin işlenmiş siteleri "zaten işlendi" sanılıp
+// yeni sekmenin siteleri atlanıyordu.
+const PROGRESS_FILE = `data/discovery-${env.SHEET_TAB}.json`;
 const SITES_DIR = 'src/sites';
 
 const logger = pino({

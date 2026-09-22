@@ -51,6 +51,8 @@ const STATUS_LABEL: Partial<Record<TerminalStatus, string>> = {
 export const COLUMNS = {
   name: 'Name',
   website: 'Website',
+  // Alternatif kolon adları — sekmeler arası şema farkı var.
+  // SaaS: Name + Website · Directory: URL (Name yok).
   type: 'Type',
   status: 'Durum',
   email: 'E-posta',
@@ -61,6 +63,12 @@ export const COLUMNS = {
   note: 'Not',
   profileUrl: 'Profil URL',
 } as const;
+
+/** Site adresi kolonunun olası adları — sekmeler arası şema farkı. */
+const WEBSITE_ALIASES = ['Website', 'URL', 'Site', 'Link', 'Domain'] as const;
+
+/** Site adı kolonunun olası adları. Opsiyonel — yoksa id kullanılır. */
+const NAME_ALIASES = ['Name', 'Site Name', 'Title'] as const;
 
 export interface SheetRow {
   /** 1-tabanlı satır numarası (başlık satırı dahil). */
@@ -98,6 +106,10 @@ export class SheetClient {
     private readonly log: Logger,
     /** Başlık adı → 0-tabanlı kolon indeksi. */
     private headers: Map<string, number>,
+    /** Bu sekmede site adresinin bulunduğu kolon (alias'lardan çözülür). */
+    private websiteColumn: string | null = null,
+    /** Bu sekmede site adının bulunduğu kolon; yoksa null. */
+    private nameColumn: string | null = null,
   ) {}
 
   /**
@@ -183,13 +195,19 @@ export class SheetClient {
 
     this.headers = new Map(row.map((h, i) => [h.trim(), i]));
 
-    const missing = [COLUMNS.name, COLUMNS.website].filter((c) => !this.headers.has(c));
-    if (missing.length > 0) {
+    // Sekmeler arası şema farkı: SaaS'ta "Website", Directory'de "URL".
+    // Site adresi ZORUNLU (site id ondan türetiliyor); isim opsiyonel.
+    this.websiteColumn = WEBSITE_ALIASES.find((c) => this.headers.has(c)) ?? null;
+
+    if (!this.websiteColumn) {
       throw new Error(
-        `Sekme "${this.tab}" içinde zorunlu kolonlar yok: ${missing.join(', ')}` +
+        `Sekme "${this.tab}" içinde site adresi kolonu yok.` +
+          `\n   Aranan adlar: ${WEBSITE_ALIASES.join(', ')}` +
           `\n   Bulunan başlıklar: ${row.filter(Boolean).join(', ') || '(boş satır)'}`,
       );
     }
+
+    this.nameColumn = NAME_ALIASES.find((c) => this.headers.has(c)) ?? null;
   }
 
   /** Kod tarafının yazacağı kolonlardan eksik olanları bildirir. */
@@ -226,13 +244,13 @@ export class SheetClient {
 
     return (res.data.values ?? []).flatMap((raw, i) => {
       const row = raw.map((c) => String(c ?? ''));
-      const website = get(row, COLUMNS.website);
+      const website = this.websiteColumn ? get(row, this.websiteColumn) : '';
       if (!website) return [];
 
       return [
         {
           rowNumber: i + 2, // başlık satırı 1, veri 2'den başlıyor
-          name: get(row, COLUMNS.name),
+          name: this.nameColumn ? get(row, this.nameColumn) : '',
           website,
           type: get(row, COLUMNS.type),
           status: get(row, COLUMNS.status),
