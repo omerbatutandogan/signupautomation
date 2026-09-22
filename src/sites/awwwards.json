@@ -1,0 +1,86 @@
+{
+  "id": "awwwards",
+  "name": "awwwards",
+  "risk": "low",
+  "signupUrl": "https://www.awwwards.com/register",
+  "steps": [
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
+    {
+      "type": "waitFor",
+      "selector": "#register_email",
+      "timeoutMs": 20000
+    },
+    {
+      "type": "humanPause",
+      "minMs": 600,
+      "maxMs": 1600
+    },
+    {
+      "type": "fill",
+      "selector": "#register_username",
+      "field": "username",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#register_email",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "#register_plainPassword_first",
+      "field": "password"
+    },
+    {
+      "type": "fill",
+      "selector": "#register_plainPassword_second",
+      "field": "password"
+    },
+    {
+      "type": "click",
+      "selector": "label[for='register_termsAndConditions']"
+    },
+    {
+      "type": "captchaGate"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 500,
+      "maxMs": 1200
+    },
+    {
+      "type": "click",
+      "selector": "button:has-text('Create Account')"
+    },
+    {
+      "type": "expect",
+      "anyOf": [
+        "text=/congratulations/i",
+        "text=/sent you a verification/i",
+        "text=/check your (e-?mail|inbox)/i",
+        "text=/verify your account/i"
+      ],
+      "timeoutMs": 25000
+    }
+  ],
+  "verification": {
+    "mode": "link",
+    "from": "*@awwwards.com",
+    "subjectContains": [
+      "confirmation",
+      "verify"
+    ],
+    "timeoutMs": 600000
+  },
+  "notes": "KAYIT DOĞRULANDI: şartlar kutucuğu (görünmez input, label tıklanıyor) eklendikten sonra hesap açıldı ve \"Congratulations! We have sent you a verification e-mail.\" çıktı; mail GELDİ (Awwwards <awwwards@awwwards.com>, konu \"Confirmation Email\"). Şartlar kutucuğu input GÖRÜNMEZ (özel stil) — label[for=...] tıklanıyor. Pazarlama kutucuğu (listsSubscribed) işaretlenmiyor. expect'teki \"welcome\" deseni sayfa başlığına (\"Welcome to the community!\") takılıp kayıt başarısızken bile geçiyordu — kaldırıldı. 2captcha AÇIK: reCAPTCHA v2 görünür (passive değil). Awwwards ToS'unda otomatik kayıt/bot yasağı YOK (terms sayfası kontrol edildi). Doğrulandı (dry-run, 22.09.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha: recaptcha_v2. Uyarılar: Captcha tespit edildi: recaptcha_v2",
+  "solveCaptcha": true,
+  "success": {
+    "anyOf": [
+      "text=/congratulations/i",
+      "text=/verification e-?mail/i"
+    ]
+  }
+}
