@@ -97,10 +97,29 @@ export class Ledger {
     `);
   }
 
-  /** TTL'i dolmuş kilitleri temizler — çökmüş çalıştırmalar siteyi kilitli bırakmasın. */
+  /**
+   * TTL'i dolmuş kilitleri ve öksüz kalmış 'running' denemeleri temizler.
+   *
+   * Süreç çökerse (ya da kill edilirse) finally bloğu çalışmaz: kilit
+   * TTL ile düşer ama attempts satırı sonsuza kadar 'running' kalır ve
+   * ledger'ı kirletir. Burada onları da terminal olmayan 'error'a çeviriyoruz.
+   */
   private reapStaleLocks(): number {
-    const stmt = this.db.prepare('DELETE FROM locks WHERE expires_at < ?');
-    return stmt.run(Date.now()).changes as number;
+    const now = Date.now();
+    const locks = this.db.prepare('DELETE FROM locks WHERE expires_at < ?').run(now)
+      .changes as number;
+
+    // Kilidi olmayan 'running' kayıtlar = sahipsiz. Terminal işaretlenmiyor,
+    // böylece site yeniden denenebilir kalıyor.
+    this.db
+      .prepare(
+        `UPDATE attempts SET status = 'error', finished_at = ?, note = 'süreç yarıda kesildi'
+         WHERE status = 'running'
+           AND site_id NOT IN (SELECT site_id FROM locks)`,
+      )
+      .run(now);
+
+    return locks;
   }
 
   // ── Kilit ───────────────────────────────────────────────────────────────

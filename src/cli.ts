@@ -203,7 +203,10 @@ async function main(): Promise<void> {
       code = command ? 1 : 0;
   }
 
-  process.exit(code);
+  // process.exit() yerine exitCode: pino'nun async transport'u kendi
+  // buffer'ını boşaltabilsin. Zorla kapatınca "_flushSync took too long"
+  // uyarısı çıkıyor ve son log satırları kaybolabiliyor.
+  process.exitCode = code;
 }
 
 main().catch((err: unknown) => {

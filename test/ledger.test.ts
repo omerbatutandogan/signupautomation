@@ -50,6 +50,21 @@ describe('kilit (idempotency)', () => {
     expect(ledger.activeLock('site-a')?.run_id).toBe('run-xyz');
     expect(ledger.activeLock('site-b')).toBeNull();
   });
+
+  it('öksüz kalan running denemeleri temizler', () => {
+    // Süreç çökmesi/kill senaryosu: attempt başlar, finally hiç çalışmaz.
+    ledger.tryClaim('site-a', 'run-1', -1000); // TTL zaten dolmuş
+    ledger.startAttempt('site-a', 'run-1');
+    ledger.close();
+
+    ledger = new Ledger(join(dir, 'test.sqlite'));
+
+    const recent = ledger.recentAttempts(5);
+    expect(recent[0]?.status).toBe('error');
+    expect(recent[0]?.note).toMatch(/yarıda kesildi/);
+    // Terminal DEĞİL — site tekrar denenebilmeli.
+    expect(ledger.terminalResult('site-a')).toBeNull();
+  });
 });
 
 describe('denemeler', () => {
