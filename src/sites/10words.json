@@ -3,7 +3,7 @@
   "name": "10words",
   "risk": "low",
   "signupUrl": "https://portal.10words.io/auth/register",
-  "notes": "Selector'lar gerçek DOM'dan doğrulandı (npm run inspect). CAPTCHA YOK. Kayıt sayfası ana sitede değil, portal subdomain'inde: 10words.io → 'Submit Your Startup' → app.10words.io/submit → portal.10words.io/auth/register. Form sade: yalnızca email + password, username istemiyor. 'remember-me' kutucuğu işaretlenmiyor (gereksiz).",
+  "notes": "Selector'lar gerçek DOM'dan doğrulandı (npm run inspect). CAPTCHA YOK. Kayıt sayfası ana sitede değil, portal subdomain'inde: 10words.io → 'Submit Your Startup' → app.10words.io/submit → portal.10words.io/auth/register. Form sade: yalnızca email + password, username istemiyor. DOĞRULAMA MAİLİ GÖNDERMİYOR — gerçek kayıtta 10 dk beklendi, mail gelmedi; hesap zaten açık ve giriş yapılmış durumdaydı (ekran görüntüsüyle teyit: My Submissions paneli). StackShare ile aynı desen, mode:'none'.",
   "steps": [
     { "type": "goto", "url": "{{signupUrl}}" },
     {
@@ -35,12 +35,14 @@
     }
   ],
   "verification": {
-    "mode": "link",
-    "subjectContains": ["verify", "confirm", "welcome", "10words"],
-    "timeoutMs": 600000
+    "mode": "none"
   },
   "success": {
-    "afterVerifyUrlContains": ["portal.10words.io", "/submit", "/dashboard"],
-    "anyOf": ["text=/verified/i", "text=/welcome/i", "text=/submit/i"]
+    "afterVerifyUrlContains": ["portal.10words.io"],
+    "anyOf": [
+      "text=/my submissions/i",
+      "text=/submit a project/i",
+      "button:has-text('Submit a Project')"
+    ]
   }
 }
