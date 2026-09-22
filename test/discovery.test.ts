@@ -7,7 +7,7 @@ import {
   isUnverified,
   riskFor,
 } from '../src/discovery/generate-config.js';
-import { normalizeUrl, originOf } from '../src/discovery/find-signup.js';
+import { normalizeUrl, originOf, registrableHost, sameSite } from '../src/discovery/find-signup.js';
 import type { FormAnalysis } from '../src/discovery/analyze-form.js';
 import type { SignupCandidate } from '../src/discovery/find-signup.js';
 
@@ -96,6 +96,18 @@ describe('mapField — alan eşleme', () => {
     ).toBe('email');
   });
 
+  it('fullname\'i lastName sanmaz', () => {
+    // Gerçek vaka: alternative.me'de input[name="fullname"] vardı;
+    // "fu-llname" içinde "lname" geçtiği için lastName'e eşleşiyordu.
+    expect(mapField(rawField({ name: 'fullname' }))).toBe('fullName');
+    expect(mapField(rawField({ name: 'full_name' }))).toBe('fullName');
+  });
+
+  it('kısaltmaları yalnızca kelime sınırında eşler', () => {
+    expect(mapField(rawField({ name: 'lname' }))).toBe('lastName');
+    expect(mapField(rawField({ name: 'fname' }))).toBe('firstName');
+  });
+
   it('telefon alanını bilinçli olarak eşlemez — SMS doğrulama kapsam dışı', () => {
     expect(mapField(rawField({ name: 'user_data[phone]' }))).toBeNull();
     expect(mapField(rawField({ placeholder: 'Contact Number' }))).toBeNull();
@@ -132,6 +144,38 @@ describe('normalizeUrl / originOf', () => {
   it('kökü çıkarır', () => {
     expect(originOf('https://example.com/a/b')).toBe('https://example.com');
     expect(originOf('airtable.com/marketplace')).toBe('https://airtable.com');
+  });
+});
+
+describe('sameSite — domain sınırı', () => {
+  it('farklı siteyi reddeder', () => {
+    // Gerçek vaka: aixcollection.com keşfi saashub.com/register'a
+    // sapmıştı — yanlış siteye kayıt olurdu.
+    expect(sameSite('https://www.saashub.com/register', 'aixcollection.com')).toBe(false);
+  });
+
+  it('alt domaini kabul eder', () => {
+    // 10words gerçek vakası: kayıt portal.10words.io'da.
+    expect(sameSite('https://portal.10words.io/auth/register', '10words.io')).toBe(true);
+  });
+
+  it('www farkını yok sayar', () => {
+    expect(sameSite('https://www.example.com/signup', 'example.com')).toBe(true);
+  });
+
+  it('baseDomain boşsa güvenli tarafta kalır', () => {
+    expect(sameSite('https://example.com', '')).toBe(false);
+  });
+});
+
+describe('registrableHost', () => {
+  it('www ve alt domainleri atar', () => {
+    expect(registrableHost('https://www.example.com')).toBe('example.com');
+    expect(registrableHost('https://portal.10words.io')).toBe('10words.io');
+  });
+
+  it('co.uk gibi ikili son ekleri korur', () => {
+    expect(registrableHost('https://shop.example.co.uk')).toBe('example.co.uk');
   });
 });
 
@@ -243,10 +287,11 @@ describe('generateConfig', () => {
     expect(warnings.some((w) => w.includes('KULLANILAMAZ'))).toBe(true);
   });
 
-  it('şifre alanı yoksa uyarır', () => {
-    const noPassword = analysis({
-      fields: [analysis().fields[0]!],
-    });
+  it('şifresiz formu KULLANILAMAZ sayar — bülten/demo formu olabilir', () => {
+    // Gerçek vakalar: 1000.tools/signup (website+email, ürün gönderme),
+    // akitaapp.com/demo (your-company+your-email, demo talebi).
+    // İkisi de "kayıt formu" sanılıp kullanılamaz config üretmişti.
+    const noPassword = analysis({ fields: [analysis().fields[0]!] }); // yalnızca email
     const { warnings } = generateConfig({
       id: 'example',
       name: 'Example',
@@ -254,7 +299,7 @@ describe('generateConfig', () => {
       candidate,
       analysis: noPassword,
     });
-    expect(warnings.some((w) => /şifre/i.test(w))).toBe(true);
+    expect(warnings.some((w) => w.startsWith('KULLANILAMAZ') && /şifre/i.test(w))).toBe(true);
   });
 
   it('gönder butonu yoksa uyarır', () => {

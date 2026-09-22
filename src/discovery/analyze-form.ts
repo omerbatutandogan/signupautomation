@@ -78,8 +78,13 @@ export function mapField(f: RawField): FieldName | null {
   // İsim alanları önce: "first_name" gibi yapısal isimler kesin, ve bu
   // alanların etiketi yanlış olabiliyor (360Quadrants: aria-label
   // "Business Email" ama alan aslında isim).
-  if (/first[_-]?name|fname|given[_-]?name/.test(structural)) return 'firstName';
-  if (/last[_-]?name|lname|surname|family[_-]?name/.test(structural)) return 'lastName';
+  // fullname önce: "fullname" içinde "lname" geçtiği için lastName
+  // kuralına takılıyordu (fu-llname). Gerçek vaka: alternative.me.
+  if (/full[_-]?name|display[_-]?name/.test(structural)) return 'fullName';
+  // \b kelime sınırı: "fname"/"lname" ayrı bir sözcük olmalı, başka
+  // kelimenin içinde gizlenmiş olmamalı.
+  if (/first[_-]?name|\bfname\b|given[_-]?name/.test(structural)) return 'firstName';
+  if (/last[_-]?name|\blname\b|surname|family[_-]?name/.test(structural)) return 'lastName';
 
   // type="text" olan e-posta alanları yaygın (360Quadrants'ta
   // user_data[email] böyleydi). type'a güvenip ismi kaçırmak, kaydı

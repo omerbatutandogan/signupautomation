@@ -99,6 +99,17 @@ async function discoverSite(
       analysis,
     });
 
+    // KULLANILAMAZ işaretli config'i dosyaya YAZMA: e-postasız veya
+    // şifresiz form kayıt formu değil (bülten/demo/ürün gönderimi).
+    // Yazmak yalnızca karışıklık yaratır, sonra elle silmek gerekir.
+    const blocking = warnings.filter((w) => w.startsWith('KULLANILAMAZ'));
+    if (blocking.length > 0) {
+      return {
+        outcome: 'no_form',
+        reason: blocking.map((w) => w.replace('KULLANILAMAZ: ', '')).join(' | '),
+      };
+    }
+
     await mkdir(SITES_DIR, { recursive: true });
     await writeFile(`${SITES_DIR}/${row.siteId}.json`, `${JSON.stringify(config, null, 2)}\n`);
 

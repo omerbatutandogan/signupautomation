@@ -1,0 +1,66 @@
+{
+  "id": "alternative",
+  "name": "Alternative.me",
+  "risk": "low",
+  "signupUrl": "https://alternative.me/signup/",
+  "steps": [
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
+    {
+      "type": "waitFor",
+      "selector": "input[name='email']",
+      "timeoutMs": 20000
+    },
+    {
+      "type": "humanPause",
+      "minMs": 600,
+      "maxMs": 1600
+    },
+    {
+      "type": "fill",
+      "selector": "input[name='fullname']",
+      "field": "fullName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "input[name='email']",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "input[name='password']",
+      "field": "password"
+    },
+    {
+      "type": "captchaGate"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 500,
+      "maxMs": 1200
+    },
+    {
+      "type": "click",
+      "selector": "button:has-text('Sign up')"
+    },
+    {
+      "type": "expect",
+      "anyOf": [
+        "text=/check your (e-?mail|inbox)/i",
+        "text=/verify your e-?mail/i",
+        "text=/confirm/i",
+        "text=/welcome/i",
+        "text=/dashboard/i",
+        "text=/thank/i"
+      ],
+      "timeoutMs": 25000
+    }
+  ],
+  "verification": {
+    "mode": "link"
+  },
+  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: link-follow, 1 sıçrama, güven: high. Captcha görülmedi."
+}

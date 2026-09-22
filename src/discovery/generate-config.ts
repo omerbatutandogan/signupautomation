@@ -149,7 +149,9 @@ export function generateConfig(input: GenerateInput): GenerateResult {
     warnings.push('Düşük güven: şifre alanı yok, bülten formu olabilir');
   }
   if (!analysis.fields.some((f) => f.field === 'password')) {
-    warnings.push('Şifre alanı yok — SSO/magic-link olabilir');
+    // Şifresiz form genelde kayıt değil: bülten, demo talebi, ürün gönderimi.
+    // Gerçek vakalar: 1000.tools/signup, akitaapp.com/demo.
+    warnings.push('KULLANILAMAZ: şifre alanı yok — kayıt formu olmayabilir (bülten/demo?)');
   }
   if (analysis.captcha) {
     warnings.push(`Captcha tespit edildi: ${analysis.captcha}`);
