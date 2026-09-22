@@ -1,0 +1,72 @@
+{
+  "id": "360quadrants",
+  "name": "360Quadrants",
+  "risk": "low",
+  "signupUrl": "https://www.360quadrants.com/signup",
+  "steps": [
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
+    {
+      "type": "waitFor",
+      "selector": "input[name='user_data[email]']",
+      "timeoutMs": 20000
+    },
+    {
+      "type": "humanPause",
+      "minMs": 600,
+      "maxMs": 1600
+    },
+    {
+      "type": "fill",
+      "selector": "input[name='user_data[first_name]']",
+      "field": "firstName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "input[name='user_data[email]']",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "input[name='user_data[password]']",
+      "field": "password"
+    },
+    {
+      "type": "fill",
+      "selector": "#companies",
+      "field": "companyName",
+      "optional": true
+    },
+    {
+      "type": "captchaGate"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 500,
+      "maxMs": 1200
+    },
+    {
+      "type": "click",
+      "selector": "button:has-text('Create Account')"
+    },
+    {
+      "type": "expect",
+      "anyOf": [
+        "text=/check your (e-?mail|inbox)/i",
+        "text=/verify your e-?mail/i",
+        "text=/confirm/i",
+        "text=/welcome/i",
+        "text=/dashboard/i",
+        "text=/thank/i"
+      ],
+      "timeoutMs": 25000
+    }
+  ],
+  "verification": {
+    "mode": "link"
+  },
+  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. TODO eşlenmeyen zorunlu alanlar: input[name='user_data[country_name]'] (zorunlu, text)."
+}

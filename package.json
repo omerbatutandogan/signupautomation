@@ -19,7 +19,8 @@
     "mail:verify-corpus": "tsx scripts/verify-eml-corpus.ts",
     "inspect": "tsx scripts/inspect-form.ts",
     "sheet:import": "tsx scripts/import-sheet.ts",
-    "record": "tsx scripts/record.ts"
+    "record": "tsx scripts/record.ts",
+    "discover": "tsx scripts/discover.ts"
   },
   "dependencies": {
     "@googleapis/gmail": "^22.0.0",

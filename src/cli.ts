@@ -37,6 +37,7 @@ Komutlar:
   run-batch [N]           Sheet'ten N siteyi sırayla işle (varsayılan 5)
     --dry-run             Submit etme, selector doğrula
     --no-wait             Siteler arası beklemeyi atla (test için)
+    --include-unverified  Doğrulanmamış taslakları da çalıştır (riskli)
   status                  Son denemeler ve ledger özeti
   list                    Tanımlı site config'lerini listele
   unlock <siteId>         Takılı kilidi temizle
@@ -45,6 +46,27 @@ Komutlar:
   sheet                   Sheet bağlantısını ve kolonları kontrol et
     --add-columns         Eksik takip kolonlarını Sheet'e ekle
 `);
+}
+
+/**
+ * Config'in "doğrulanmadı" damgasını kaldırır.
+ * Başarılı --dry-run, selector'ların gerçek sayfada bulunduğunu kanıtlar.
+ */
+async function markVerified(siteId: string): Promise<void> {
+  const { readFile, writeFile } = await import('node:fs/promises');
+  const { isUnverified, clearUnverifiedMarker } = await import('./discovery/generate-config.js');
+
+  const path = `src/sites/${siteId}.json`;
+  try {
+    const cfg = JSON.parse(await readFile(path, 'utf8')) as { notes?: string };
+    if (!isUnverified(cfg)) return;
+
+    cfg.notes = clearUnverifiedMarker(cfg.notes);
+    await writeFile(path, `${JSON.stringify(cfg, null, 2)}\n`);
+    console.log(`   ✓ Config doğrulandı — run-batch artık işleyebilir`);
+  } catch {
+    // Config okunamadıysa sessizce geç — asıl iş zaten başarılı oldu.
+  }
 }
 
 async function cmdRunOne(siteId: string, flags: Set<string>): Promise<number> {
@@ -63,6 +85,12 @@ async function cmdRunOne(siteId: string, flags: Set<string>): Promise<number> {
     console.log(`\n${icon} ${siteId}: ${outcome.status}`);
     if (outcome.note) console.log(`   ${outcome.note}`);
     if (outcome.artifactsDir) console.log(`   artifacts: ${outcome.artifactsDir}`);
+
+    // Başarılı dry-run = selector'lar gerçek sayfada bulundu. Damgayı
+    // kaldır ki run-batch bu config'i artık atlamasın.
+    if (flags.has('--dry-run') && outcome.status === 'completed') {
+      await markVerified(siteId);
+    }
 
     return outcome.status === 'completed' || outcome.status.startsWith('skipped') ? 0 : 1;
   } finally {
@@ -166,11 +194,30 @@ async function cmdRunBatch(flags: Set<string>, positional: string[]): Promise<nu
   console.log(`\nSheet'te işlenmeye uygun: ${pending.length} satır`);
 
   // Yalnızca config'i yazılmış siteler işlenebilir.
+  const { isUnverified } = await import('./discovery/generate-config.js');
+  const includeUnverified = flags.has('--include-unverified');
   const runnable: typeof pending = [];
+  let skippedUnverified = 0;
+
   for (const row of pending) {
     if (runnable.length >= limit) break;
     const cfg = await loadSiteConfig(row.siteId).catch(() => null);
-    if (cfg) runnable.push(row);
+    if (!cfg) continue;
+
+    // Otomatik üretilmiş ama --dry-run ile doğrulanmamış config'ler
+    // atlanır: yanlış selector'la gerçek kayıt denemek, yanlış forma
+    // veri göndermek demek.
+    if (isUnverified(cfg) && !includeUnverified) {
+      skippedUnverified++;
+      continue;
+    }
+    runnable.push(row);
+  }
+
+  if (skippedUnverified > 0) {
+    console.log(`Doğrulanmamış taslak atlandı: ${skippedUnverified}`);
+    console.log(`   Doğrulamak için: run-one <siteId> --dry-run`);
+    console.log(`   Yine de çalıştırmak için: --include-unverified`);
   }
 
   if (runnable.length === 0) {
