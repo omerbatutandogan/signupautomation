@@ -201,6 +201,12 @@ export interface SiteConfig {
   };
   /** Varsayılan kapalı. Yalnızca trivial navigator.webdriver kontrolü yapan siteler için. */
   stealth?: boolean;
+  /**
+   * 2captcha ile otomatik captcha çözümü. VARSAYILAN KAPALI.
+   * Bazı dizinlerin ToS'u captcha bypass'ını yasaklıyor; her açma
+   * bilinçli bir karar olmalı. risk:"high" sitelerde zaten çalışmaz.
+   */
+  solveCaptcha?: boolean;
   notes?: string;
 }
 

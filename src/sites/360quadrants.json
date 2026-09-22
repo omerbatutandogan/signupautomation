@@ -42,6 +42,12 @@
     },
     {
       "type": "fill",
+      "selector": "input[name='user_data[phone]']",
+      "value": "5551234567",
+      "optional": true
+    },
+    {
+      "type": "fill",
       "selector": "#companies",
       "field": "companyName",
       "optional": true
@@ -74,5 +80,5 @@
   "verification": {
     "mode": "link"
   },
-  "notes": "Doğrulandı (dry-run, 22.09.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. country_name elle sabit değerle dolduruldu (Turkey) — otomatik eşlenemiyordu."
+  "notes": "Doğrulandı (dry-run, 22.09.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. country_name ve phone elle sabit değerlerle dolduruldu — otomatik eşlenemiyorlardı. phone ZORUNLU alan (boş bırakılınca kırmızı çerçeve + submit reddi); burada SMS doğrulaması yok, yalnızca form alanı."
 }

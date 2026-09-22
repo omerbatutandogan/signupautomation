@@ -259,6 +259,35 @@ async function runStep(ctx: SignupContext, step: Step, index: number): Promise<v
         return;
       }
 
+      // 2captcha YALNIZCA config'inde açıkça izin verilen sitelerde.
+      // Varsayılan kapalı: bazı dizinlerin ToS'u captcha bypass'ını
+      // yasaklıyor ve ban kalıcı listing kaybı demek. risk:"high"
+      // siteler zaten runner'ın risk kapısında eleniyor.
+      if (ctx.site.solveCaptcha && ctx.site.risk === 'high') {
+        // İkinci savunma katmanı: runner'ın risk kapısı zaten buraya
+        // gelmeyi engelliyor ama config elle düzenlenebilir.
+        log.error(
+          { siteId: ctx.site.id },
+          'Yüksek riskli sitede solveCaptcha AÇIK — yok sayılıyor (ToS koruması)',
+        );
+      } else if (ctx.site.solveCaptcha) {
+        const { solveCaptcha, isSolverConfigured } = await import(
+          '../integrations/captcha-solver.js'
+        );
+
+        if (!isSolverConfigured()) {
+          log.warn('solveCaptcha açık ama CAPTCHA_API_KEY yok — insana düşülüyor');
+        } else {
+          try {
+            await solveCaptcha(ctx.page, kind, log);
+            return;
+          } catch (err) {
+            // Çözücü başarısızsa akışı düşürme — insan devralabilir.
+            log.warn({ err: (err as Error).message }, '2captcha çözemedi, insana düşülüyor');
+          }
+        }
+      }
+
       const shot = await ctx.artifacts.shot(`captcha-${kind}`);
       log.warn({ kind, shot }, 'İnsan müdahalesi gerekiyor');
       await ctx.requestHumanCaptcha(kind, shot);

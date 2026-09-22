@@ -151,6 +151,8 @@ export const SiteConfigSchema = z
       .optional(),
     /** Varsayılan kapalı — yalnızca trivial navigator.webdriver kontrolü yapan siteler. */
     stealth: z.boolean().optional(),
+    /** 2captcha ile otomatik çözüm. Varsayılan kapalı — ToS riski. */
+    solveCaptcha: z.boolean().optional(),
     notes: z.string().optional(),
   })
   .superRefine((cfg, ctx) => {
