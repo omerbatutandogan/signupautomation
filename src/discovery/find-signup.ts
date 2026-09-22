@@ -7,7 +7,7 @@
  * "Submit Your Startup" butonunu takip ederek bulundu.
  */
 
-import type { Page } from 'playwright';
+import type { Page, Response } from 'playwright';
 
 /** Tahmin edilebilir kayıt yolları — ucuz olduğu için önce denenir. */
 const DIRECT_PATHS = [
@@ -28,6 +28,43 @@ const SIGNUP_LINK_TEXT =
 /** Kayıt DEĞİL, giriş sayfası olduğunu gösteren işaretler. */
 const LOGIN_HINT = /log\s*in|login|sign\s*in|signin/i;
 
+/**
+ * Bot koruma duvarı metinleri — gerçek yakalanmış sayfalardan.
+ *
+ * Dar tutuluyor: "access denied" gibi genel ifadeler ölü sayfalarda da
+ * geçiyor ve onları yanlışlıkla "bot koruması" saymak siteyi gereksiz
+ * yere otomasyon dışına atar.
+ */
+const BOT_WALL_TEXT = [
+  /just a moment\.\.\./i, // Cloudflare interstitial (goodfirms, eu-startups)
+  /attention required! \| cloudflare/i, // Cloudflare blok (crunchbase)
+  /enable javascript and cookies to continue/i, // Cloudflare noscript
+  /vercel security checkpoint/i, // Vercel (siteinspire)
+  /checking your browser before accessing/i, // eski Cloudflare
+  /we're verifying your browser/i,
+  /sorry, you have been blocked/i,
+  /performing security verification/i, // Cloudflare (goodfirms, eu-startups)
+];
+
+/** Bot koruması sayılan durum kodları. */
+const BOT_WALL_STATUS = new Set([403, 429]);
+
+/**
+ * Sayfa bot koruma duvarı mı?
+ *
+ * 403/404 ayrımı önemli: keşif ikisini de "form bulunamadı" diye
+ * kaydediyordu ve Crunchbase, GoodFirms, EU-Startups gibi kayıt formu
+ * KESİNLİKLE olan siteler "kayıt almıyor" sanılıyordu. Bot korumalı site
+ * otomasyona uygun değil ama "form yok" da değil — ayrı kategori.
+ *
+ * Saf fonksiyon: tarayıcı olmadan gerçek gövde metinlerine karşı test
+ * edilebilir.
+ */
+export function isBotWall(status: number, bodyText: string): boolean {
+  if (BOT_WALL_STATUS.has(status)) return true;
+  return BOT_WALL_TEXT.some((re) => re.test(bodyText));
+}
+
 export interface SignupCandidate {
   url: string;
   /** high: şifre alanı + submit var. low: yalnızca email alanı bulundu. */
@@ -37,6 +74,18 @@ export interface SignupCandidate {
   /** Nasıl bulunduğu — config notlarına yazılıyor. */
   method: 'direct-path' | 'link-follow' | 'origin';
 }
+
+/**
+ * Keşif sonucu.
+ *
+ * `bot_protected` "form yok" DEĞİL: site kayıt alıyor olabilir ama bot
+ * koruması otomasyonu engelliyor. İkisini tek kovaya atmak Crunchbase,
+ * GoodFirms, EU-Startups'ı "kayıt almıyor" diye eledi.
+ */
+export type SignupSearchResult =
+  | { kind: 'found'; candidate: SignupCandidate }
+  | { kind: 'bot_protected'; url: string }
+  | { kind: 'not_found' };
 
 /**
  * Sayfada kayıt formu var mı?
@@ -98,23 +147,70 @@ async function evaluateForm(page: Page): Promise<'high' | 'low' | null> {
  * baseDomain verilirse yönlendirme sonrası hâlâ aynı sitede olduğumuzu
  * doğrular — bazı siteler kayıt sayfasını üçüncü partiye yönlendiriyor.
  */
-async function tryUrl(
-  page: Page,
-  url: string,
-  baseDomain?: string,
-): Promise<'high' | 'low' | null> {
+type TryResult = 'high' | 'low' | 'bot_wall' | null;
+
+async function tryUrl(page: Page, url: string, baseDomain?: string): Promise<TryResult> {
   try {
     // Kısa timeout: site ayakta olduğu zaten doğrulandı, bu yol yoksa
     // hızlıca sıradakine geçilmeli (8 yol × uzun timeout = dakikalar).
     const res = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 12_000 });
+    const status = res?.status() ?? 0;
+
+    // Bot duvarı "form yok" DEĞİL — ayrı kategori. Crunchbase/GoodFirms
+    // burada 403 veriyor ve eskiden "kayıt formu bulunamadı" sayılıyordu.
+    const body = await page.evaluate(() => document.body?.innerText ?? '').catch(() => '');
+    if (isBotWall(status, body)) return 'bot_wall';
+
     // 404/5xx sayfalarında form aramanın anlamı yok.
-    if (res && res.status() >= 400) return null;
-    // Yönlendirme başka siteye götürdüyse bu bizim kayıt sayfamız değil.
-    if (baseDomain && !sameSite(page.url(), baseDomain)) return null;
+    if (status >= 400) return null;
+
+    if (
+      baseDomain &&
+      !acceptsOffSiteUrl({
+        url: page.url(),
+        baseDomain,
+        redirected: wasRedirected(res),
+      })
+    ) {
+      return null;
+    }
+
     return await evaluateForm(page);
   } catch {
     return null;
   }
+}
+
+/**
+ * Bu yanıta HTTP yönlendirmesiyle mi ulaşıldı?
+ *
+ * Playwright yönlendirme zincirini request.redirectedFrom() ile tutuyor.
+ * Zincir varsa sunucu bizi oraya gönderdi; yoksa istenen URL doğrudan
+ * yanıtladı.
+ */
+function wasRedirected(res: Response | null): boolean {
+  return res?.request().redirectedFrom() != null;
+}
+
+/**
+ * Farklı domaindeki sayfa kabul edilmeli mi?
+ *
+ * İki durumu ayırır:
+ *  - Site taşınmış (angel.co → wellfound.com): sunucu 30x ile gönderdi,
+ *    hâlâ aradığımız sitenin kaydı. KABUL.
+ *  - Sızma (aixcollection.com sayfasındaki link → saashub.com/register):
+ *    başka bir sitenin kaydı, yanlış yere kayıt olurduk. RED.
+ *
+ * Saf fonksiyon: karar tarayıcıdan bağımsız test edilebilsin diye
+ * ayrıldı.
+ */
+export function acceptsOffSiteUrl(opts: {
+  url: string;
+  baseDomain: string;
+  redirected: boolean;
+}): boolean {
+  if (sameSite(opts.url, opts.baseDomain)) return true;
+  return opts.redirected;
 }
 
 /** URL'i normalize eder: şema ekler, sondaki eğik çizgiyi atar. */
@@ -166,7 +262,7 @@ export async function findSignupPage(
   page: Page,
   website: string,
   opts: { maxHops?: number } = {},
-): Promise<SignupCandidate | null> {
+): Promise<SignupSearchResult> {
   const maxHops = opts.maxHops ?? 2;
   const origin = originOf(website);
   const baseDomain = registrableHost(origin);
@@ -174,26 +270,39 @@ export async function findSignupPage(
   // 0. Site ayakta mı? Yanıt vermeyen sitede 8 yolu tek tek denemek
   // site başına ~3 dk harcıyor (affordhunt.com boş sayfa döndürüyordu).
   // Tek kısa kontrolle bunu saniyelere indiriyoruz.
-  const reachable = await page
+  const homeRes = await page
     .goto(origin, { waitUntil: 'domcontentloaded', timeout: 15_000 })
-    .then((res) => !res || res.status() < 400)
-    .catch(() => false);
+    .catch(() => null);
 
-  if (!reachable) return null;
+  // Ana sayfa bot duvarıysa alt yolları denemenin anlamı yok — hepsi
+  // aynı duvarı verir ve site "form yok" diye kaydedilirdi.
+  const homeBody = await page.evaluate(() => document.body?.innerText ?? '').catch(() => '');
+  if (isBotWall(homeRes?.status() ?? 0, homeBody)) {
+    return { kind: 'bot_protected', url: origin };
+  }
+
+  if (homeRes && homeRes.status() >= 400) return { kind: 'not_found' };
 
   // Ana sayfa boş mu? (park edilmiş/kapanmış domainler)
-  const hasContent = await page
-    .evaluate(() => (document.body?.innerText ?? '').trim().length > 50)
-    .catch(() => false);
+  if (homeBody.trim().length <= 50) return { kind: 'not_found' };
 
-  if (!hasContent) return null;
+  // Alt yollarda bot duvarı görülürse hatırla: form bulunamazsa sonuç
+  // "form yok" değil "bot korumalı" olmalı.
+  let sawBotWall = false;
 
   // 1. Doğrudan yollar — ucuz, çoğu sitede tutuyor.
   for (const path of DIRECT_PATHS) {
     const url = `${origin}${path}`;
-    const confidence = await tryUrl(page, url, baseDomain);
-    if (confidence) {
-      return { url: page.url(), confidence, hops: 0, method: 'direct-path' };
+    const result = await tryUrl(page, url, baseDomain);
+    if (result === 'bot_wall') {
+      sawBotWall = true;
+      continue;
+    }
+    if (result) {
+      return {
+        kind: 'found',
+        candidate: { url: page.url(), confidence: result, hops: 0, method: 'direct-path' },
+      };
     }
   }
 
@@ -202,21 +311,28 @@ export async function findSignupPage(
     await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 25_000 });
     await page.waitForTimeout(2500);
   } catch {
-    return null;
+    return sawBotWall ? { kind: 'bot_protected', url: origin } : { kind: 'not_found' };
   }
 
   // Ana sayfanın kendisinde form olabilir (tek sayfalık siteler).
   const onHome = await evaluateForm(page);
   if (onHome === 'high') {
-    return { url: page.url(), confidence: 'high', hops: 0, method: 'origin' };
+    return {
+      kind: 'found',
+      candidate: { url: page.url(), confidence: 'high', hops: 0, method: 'origin' },
+    };
   }
 
   const links = await collectSignupLinks(page, origin);
 
   for (const link of links.slice(0, maxHops * 3)) {
-    const confidence = await tryUrl(page, link, baseDomain);
-    if (confidence) {
-      return { url: page.url(), confidence, hops: 1, method: 'link-follow' };
+    const result = await tryUrl(page, link, baseDomain);
+    if (result === 'bot_wall') sawBotWall = true;
+    else if (result) {
+      return {
+        kind: 'found',
+        candidate: { url: page.url(), confidence: result, hops: 1, method: 'link-follow' },
+      };
     }
 
     // İkinci sıçrama: 10words deseni — ara sayfa asıl kayda yönlendiriyor.
@@ -224,15 +340,24 @@ export async function findSignupPage(
       const second = await collectSignupLinks(page, origin);
       for (const inner of second.slice(0, 3)) {
         if (inner === link) continue;
-        const innerConfidence = await tryUrl(page, inner, baseDomain);
-        if (innerConfidence) {
-          return { url: page.url(), confidence: innerConfidence, hops: 2, method: 'link-follow' };
+        const innerResult = await tryUrl(page, inner, baseDomain);
+        if (innerResult === 'bot_wall') sawBotWall = true;
+        else if (innerResult) {
+          return {
+            kind: 'found',
+            candidate: {
+              url: page.url(),
+              confidence: innerResult,
+              hops: 2,
+              method: 'link-follow',
+            },
+          };
         }
       }
     }
   }
 
-  return null;
+  return sawBotWall ? { kind: 'bot_protected', url: origin } : { kind: 'not_found' };
 }
 
 /** Sayfadaki kayıt adayı linkleri toplar, giriş linklerini geriye atar. */

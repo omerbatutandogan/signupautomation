@@ -7,7 +7,13 @@ import {
   isUnverified,
   riskFor,
 } from '../src/discovery/generate-config.js';
-import { normalizeUrl, originOf, registrableHost, sameSite } from '../src/discovery/find-signup.js';
+import {
+  acceptsOffSiteUrl,
+  normalizeUrl,
+  originOf,
+  registrableHost,
+  sameSite,
+} from '../src/discovery/find-signup.js';
 import type { FormAnalysis } from '../src/discovery/analyze-form.js';
 import type { SignupCandidate } from '../src/discovery/find-signup.js';
 
@@ -165,6 +171,54 @@ describe('sameSite — domain sınırı', () => {
 
   it('baseDomain boşsa güvenli tarafta kalır', () => {
     expect(sameSite('https://example.com', '')).toBe(false);
+  });
+});
+
+describe('acceptsOffSiteUrl — taşınma mı sızma mı', () => {
+  it('YÖNLENDİRME ile gelen farklı domaini kabul eder (site taşınmış)', () => {
+    // Gerçek vaka: angel.co/signup → wellfound.com/signup. Sunucu 30x ile
+    // gönderdi, hâlâ aradığımız sitenin kaydı. Eskiden reddediliyordu ve
+    // AngelList "kayıt formu bulunamadı" diye kaydedilmişti.
+    expect(
+      acceptsOffSiteUrl({
+        url: 'https://wellfound.com/signup',
+        baseDomain: 'angel.co',
+        redirected: true,
+      }),
+    ).toBe(true);
+  });
+
+  it('LİNK ile gidilen farklı domaini reddeder (sızma)', () => {
+    // Gerçek vaka: aixcollection.com sayfasındaki bir link saashub.com'a
+    // götürüyordu — yanlış siteye kayıt olurduk. Bu koruma bozulmamalı.
+    expect(
+      acceptsOffSiteUrl({
+        url: 'https://www.saashub.com/register',
+        baseDomain: 'aixcollection.com',
+        redirected: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('aynı sitede yönlendirme olmasa da kabul eder', () => {
+    expect(
+      acceptsOffSiteUrl({
+        url: 'https://example.com/signup',
+        baseDomain: 'example.com',
+        redirected: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('aynı sitenin alt domainini yönlendirmesiz kabul eder', () => {
+    // 10words: portal.10words.io — sameSite zaten kabul ediyor.
+    expect(
+      acceptsOffSiteUrl({
+        url: 'https://portal.10words.io/auth/register',
+        baseDomain: '10words.io',
+        redirected: false,
+      }),
+    ).toBe(true);
   });
 });
 

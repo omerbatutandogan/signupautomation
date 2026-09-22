@@ -5,6 +5,7 @@
  *   npm run discover -- --limit 20           # Sheet'ten 20 site
  *   npm run discover -- --limit 20 --headed  # gözlemlemek için
  *   npm run discover -- --site 10words       # tek site yeniden keşif
+ *   npm run discover -- --retry-failed       # yalnızca redleri yeniden dene
  *   npm run discover -- --reset              # ilerlemeyi sıfırla
  *
  * Kesinti olursa data/discovery.json sayesinde kalınan yerden devam eder.
@@ -19,6 +20,12 @@ import { findSignupPage } from '../src/discovery/find-signup.js';
 import { analyzeForm } from '../src/discovery/analyze-form.js';
 import { generateConfig, riskFor } from '../src/discovery/generate-config.js';
 import { listSiteIds } from '../src/adapters/registry.js';
+import {
+  BOT_REASON,
+  RETRYABLE,
+  shouldEnqueue,
+  type Outcome as QueueOutcome,
+} from './discover-queue.js';
 
 // Sekme başına ayrı ilerleme dosyası: tek dosya kullanılırsa sekme
 // değiştirince önceki sekmenin işlenmiş siteleri "zaten işlendi" sanılıp
@@ -34,7 +41,9 @@ const logger = pino({
   },
 });
 
-type Outcome = 'generated' | 'high_risk' | 'no_form' | 'error' | 'skipped_existing';
+// Kuyruk kararları ve sonuç tipleri discover-queue.ts'de — saf mantık
+// olarak ayrıldı, testleri orada.
+type Outcome = QueueOutcome;
 
 interface ProgressEntry {
   siteId: string;
@@ -90,9 +99,15 @@ async function discoverSite(
   }
 
   const attempt = async (page: Page): Promise<SiteResult | null> => {
-    const candidate = await findSignupPage(page, row.website);
-    if (!candidate) return null;
+    const search = await findSignupPage(page, row.website);
 
+    // Bot duvarı: headless'ta çıkıp headed'da çıkmayabilir, bu yüzden
+    // burada SONUÇ döndürülmüyor — çağıran katman headed denemesini de
+    // yaptıktan sonra karar veriyor.
+    if (search.kind === 'bot_protected') return { outcome: 'bot_protected', reason: BOT_REASON };
+    if (search.kind === 'not_found') return null;
+
+    const candidate = search.candidate;
     const analysis = await analyzeForm(page);
     const { config, warnings } = generateConfig({
       id: row.siteId,
@@ -119,12 +134,18 @@ async function discoverSite(
     return { outcome: 'generated', signupUrl: candidate.url, warnings };
   };
 
+  // Headless'ta bot duvarı görüldüyse hatırla ama hemen pes etme:
+  // gerçek tarayıcı duvarı aşabiliyor (Cloudflare headless'ı daha sert
+  // eliyor). Headed de duvara çarparsa sonuç bot_protected olur.
+  let botWalled = false;
+
   // 1. Headless dene (ucuz).
   if (!opts.forceHeaded) {
     const page = await browser.newPage();
     try {
       const result = await attempt(page);
-      if (result) return result;
+      if (result?.outcome === 'bot_protected') botWalled = true;
+      else if (result) return result;
     } catch (err) {
       logger.debug({ err: (err as Error).message }, 'headless deneme hatası');
     } finally {
@@ -137,9 +158,16 @@ async function discoverSite(
   const page = await headed.newPage();
   try {
     const result = await attempt(page);
+    if (result?.outcome === 'bot_protected') {
+      return { outcome: 'bot_protected', reason: BOT_REASON };
+    }
     if (result) return result;
+    // Headed form bulamadı: headless'ta duvar gördüysek sebep "form yok"
+    // değil, duvarın arkasını göremememiz.
+    if (botWalled) return { outcome: 'bot_protected', reason: BOT_REASON };
     return { outcome: 'no_form', reason: 'Kayıt formu bulunamadı (headless+headed denendi)' };
   } catch (err) {
+    if (botWalled) return { outcome: 'bot_protected', reason: BOT_REASON };
     return { outcome: 'error', reason: (err as Error).message.slice(0, 150) };
   } finally {
     await page.close().catch(() => undefined);
@@ -153,6 +181,7 @@ async function main(): Promise<void> {
   const siteFilter = args.includes('--site') ? args[args.indexOf('--site') + 1] : null;
   const forceHeaded = args.includes('--headed');
   const reset = args.includes('--reset');
+  const retryFailed = args.includes('--retry-failed');
 
   const progress = reset ? { entries: {} } : await loadProgress();
   if (reset) logger.info('İlerleme sıfırlandı');
@@ -169,7 +198,8 @@ async function main(): Promise<void> {
   const queue = allRows.filter((row) => {
     if (!row.siteId) return false;
     if (siteFilter) return row.siteId === siteFilter;
-    if (progress.entries[row.siteId]) return false; // zaten işlendi
+
+    if (!shouldEnqueue(progress.entries[row.siteId]?.outcome, retryFailed)) return false;
     if (existingConfigs.has(row.siteId)) return false; // config var
     return true;
   });
@@ -178,10 +208,14 @@ async function main(): Promise<void> {
 
   console.log(`\nSheet'te ${allRows.length} satır`);
   console.log(`Config'i olan: ${existingConfigs.size} · Daha önce işlenen: ${Object.keys(progress.entries).length}`);
+  if (retryFailed) {
+    const n = Object.values(progress.entries).filter((e) => RETRYABLE.has(e.outcome)).length;
+    console.log(`--retry-failed: ${n} başarısız kayıt yeniden kuyrukta`);
+  }
   console.log(`Bu turda keşfedilecek: ${batch.length}\n`);
 
   if (batch.length === 0) {
-    console.log('Keşfedilecek yeni site yok. --reset ile baştan başlayabilirsin.');
+    console.log('Keşfedilecek yeni site yok. --retry-failed ile redleri, --reset ile hepsini yeniden dener.');
     return;
   }
 
@@ -203,6 +237,7 @@ async function main(): Promise<void> {
   const tally: Record<Outcome, number> = {
     generated: 0,
     high_risk: 0,
+    bot_protected: 0,
     no_form: 0,
     error: 0,
     skipped_existing: 0,
@@ -231,7 +266,8 @@ async function main(): Promise<void> {
           for (const w of result.warnings) console.log(`      ⚠️  ${w}`);
         }
       } else {
-        const icon = result.outcome === 'high_risk' ? '⛔' : '❌';
+        const icon =
+          result.outcome === 'high_risk' ? '⛔' : result.outcome === 'bot_protected' ? '🛡️' : '❌';
         console.log(`${icon} ${result.reason ?? result.outcome}`);
         await sheet
           .writeOutcome(row, { status: 'manual', note: result.reason ?? result.outcome })
@@ -248,8 +284,12 @@ async function main(): Promise<void> {
   console.log(`\n── Keşif Özeti ──`);
   console.log(`   ✅ Taslak üretildi:  ${tally.generated}`);
   console.log(`   ⛔ Yüksek risk:      ${tally.high_risk}`);
+  console.log(`   🛡️  Bot koruması:     ${tally.bot_protected}`);
   console.log(`   ❌ Form bulunamadı:  ${tally.no_form}`);
   console.log(`   ⚠️  Hata:             ${tally.error}`);
+  if (tally.bot_protected > 0) {
+    console.log(`\nBot korumalı siteler otomasyona uygun değil — elle açılmalı.`);
+  }
   console.log(`\nÜretilen taslaklar DOĞRULANMADI — run-batch bunları atlar.`);
   console.log(`Doğrulamak için: npm run cli -- run-one <siteId> --dry-run\n`);
 }
