@@ -26,7 +26,15 @@ import { dirname } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { auth as gmailAuth, gmail } from '@googleapis/gmail';
 
-const SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
+/**
+ * Gmail okuma + Sheets yazma. Sheet kayıt hesabının (SIGNUP_EMAIL) kendi
+ * Drive'ında olduğu için ayrı service account ve ayrı paylaşım gerekmiyor —
+ * aynı OAuth kimliği ikisine de erişiyor.
+ */
+const SCOPES = [
+  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/spreadsheets',
+];
 const CLIENT_FILE = process.env.GOOGLE_OAUTH_CLIENT_FILE ?? '.auth/gmail-client-secret.json';
 const TOKEN_FILE = process.env.GOOGLE_OAUTH_TOKEN_FILE ?? '.auth/gmail-token.json';
 const CALLBACK_PORT = 5899;

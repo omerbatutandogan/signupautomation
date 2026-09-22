@@ -39,6 +39,7 @@ Komutlar:
   unlock <siteId>         Takılı kilidi temizle
   password <siteId>       Türetilmiş şifreyi yazdır
   check-gmail             Gmail bağlantısını doğrula
+  sheet                   Sheet bağlantısını ve kolonları kontrol et
 `);
 }
 
@@ -134,6 +135,40 @@ async function cmdPassword(siteId: string): Promise<number> {
   return 0;
 }
 
+async function cmdSheet(): Promise<number> {
+  const { SheetClient, COLUMNS } = await import('./integrations/sheet.js');
+  const client = await SheetClient.create(logger);
+
+  if (!client) {
+    console.log('❌ Sheet bağlanamadı.');
+    console.log('   SHEET_ID .env\'de tanımlı mı?');
+    console.log('   OAuth token Sheets yetkisi içeriyor mu? → npm run gmail:auth');
+    return 1;
+  }
+
+  const rows = await client.readAll();
+  const pending = await client.readPending();
+  const missing = client.missingColumns();
+
+  console.log(`\n✅ Sheet bağlı — ${rows.length} satır okundu\n`);
+  console.log(`   İşlenmeye uygun: ${pending.length}`);
+
+  if (missing.length > 0) {
+    console.log(`\n⚠️  Eksik kolonlar (kod bunlara yazamaz):`);
+    for (const c of missing) console.log(`     ${c}`);
+    console.log(`\n   Bu kolonları Sheet'e eklersen durum takibi çalışır.`);
+    console.log(`   Zorunlu olanlar: ${COLUMNS.status}, ${COLUMNS.note}`);
+  }
+
+  console.log('\nİlk 10 satır:');
+  for (const r of rows.slice(0, 10)) {
+    const status = r.status || '(boş)';
+    console.log(`  ${r.siteId.padEnd(20)} ${r.website.padEnd(32)} ${status}`);
+  }
+
+  return 0;
+}
+
 async function cmdCheckGmail(): Promise<number> {
   try {
     const client = await createGmailClient();
@@ -197,6 +232,9 @@ async function main(): Promise<void> {
     }
     case 'check-gmail':
       code = await cmdCheckGmail();
+      break;
+    case 'sheet':
+      code = await cmdSheet();
       break;
     default:
       usage();

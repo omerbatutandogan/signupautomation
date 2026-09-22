@@ -33,6 +33,11 @@ const EnvSchema = z.object({
   GOOGLE_OAUTH_CLIENT_FILE: z.string().default('.auth/gmail-client-secret.json'),
   GOOGLE_OAUTH_TOKEN_FILE: z.string().default('.auth/gmail-token.json'),
 
+  // Sheet opsiyonel: boşsa entegrasyon devre dışı, çalıştırma SQLite ile
+  // devam eder. Otorite ledger'da, Sheet yalnızca insan görünürlüğü.
+  SHEET_ID: z.string().default(''),
+  SHEET_TAB: z.string().default('Sheet1'),
+
   // Captcha insan devralması gerektirdiği için varsayılan headed.
   HEADLESS: boolish(false),
 
