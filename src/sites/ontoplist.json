@@ -1,0 +1,99 @@
+{
+  "id": "ontoplist",
+  "name": "OnTopList",
+  "risk": "low",
+  "signupUrl": "https://www.ontoplist.com/join/",
+  "steps": [
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
+    {
+      "type": "waitFor",
+      "selector": "#email",
+      "timeoutMs": 20000
+    },
+    {
+      "type": "humanPause",
+      "minMs": 600,
+      "maxMs": 1600
+    },
+    {
+      "type": "fill",
+      "selector": "#email",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "#password",
+      "field": "password"
+    },
+    {
+      "type": "fill",
+      "selector": "#url",
+      "field": "website"
+    },
+    {
+      "type": "fill",
+      "selector": "#sitename",
+      "field": "companyName"
+    },
+    {
+      "type": "fill",
+      "selector": "#description",
+      "field": "description",
+      "timeoutMs": 25000
+    },
+    {
+      "type": "click",
+      "selector": "label[for='t2']"
+    },
+    {
+      "type": "select",
+      "selector": "#category",
+      "field": "category"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 1200,
+      "maxMs": 2200
+    },
+    {
+      "type": "select",
+      "selector": "#subcategory",
+      "field": "category",
+      "optional": true
+    },
+    {
+      "type": "select",
+      "selector": "#language_id",
+      "value": "English"
+    },
+    {
+      "type": "captchaGate"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 500,
+      "maxMs": 1200
+    },
+    {
+      "type": "click",
+      "selector": "button:has-text('Submit My Listing')"
+    },
+    {
+      "type": "expect",
+      "anyOf": [
+        "text=/complete your directory listing/i",
+        "text=/your listing is not visible yet/i",
+        "a:has-text('Sign Out')",
+        "text=/my account/i"
+      ],
+      "timeoutMs": 25000
+    }
+  ],
+  "verification": {
+    "mode": "none"
+  },
+  "notes": "Kayıt + listing tek formda. DOĞRULANDI 2026-09-23: hesap açıldı, oturum açık (My Account / Sign Out görünüyor), listing 'geo.new' kaydedildi. Mail doğrulaması YOK — site hesabı anında aktif ediyor, bu yüzden mode:'none'. Listing yayını ya $29.99/yıl ödeme ya da siteye badge koyma gerektiriyor; hesap bedava, listing görünürlüğü değil. expect gerçek kayıt-sonrası sayfadan alındı (ödeme sayfası). Keşif taslağı elle düzeltildi: #sitename'e website yerine companyName, #language_id zorunlu (keşif kaçırmıştı), Listing Type radyosu label[for='t2'] ile Website'e çevrildi. ToS okundu: otomatik kayıt yasağı YOK; robots.txt /join/ engellemiyor."
+}

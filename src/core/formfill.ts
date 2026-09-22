@@ -15,11 +15,36 @@ export function randInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-/** İnsan hızında yazar. */
+/**
+ * Yazma için ayrılan üst sınır. Adım timeout'u (varsayılan 15sn) bunun
+ * üstünde kalmalı, yoksa yazma yarıda kesilir.
+ */
+const TYPING_BUDGET_MS = 9_000;
+
+/**
+ * İnsan hızında yazar.
+ *
+ * Gecikme uzunluğa göre ölçekleniyor: sabit 60-180ms, uzun açıklamalarda
+ * (~140 karakter) 19 saniye ediyor ve adım timeout'unu aşıyordu — ontoplist
+ * açıklama alanı tam burada yarıda kesildi. Kısa alanlar tam insan hızında
+ * kalıyor; yalnızca bütçeyi aşan uzun metinler hızlanıyor.
+ */
 export async function typeHuman(locator: Locator, value: string): Promise<void> {
   await locator.click();
   await locator.fill(''); // önceki değeri temizle
-  await locator.pressSequentially(value, { delay: randInt(60, 180) });
+  await locator.pressSequentially(value, { delay: typingDelayMs(value.length, randInt(60, 180)) });
+}
+
+/**
+ * Karakter başına gecikmeyi bütçeye sığdırır.
+ *
+ * Kısa alanlarda doğal hız korunur; yalnızca toplam süre bütçeyi aşarsa
+ * daralır ve asla 10ms altına inmez (keydown olayları gerçek kalmalı).
+ */
+export function typingDelayMs(length: number, naturalDelay: number): number {
+  if (length <= 0) return naturalDelay;
+  const affordable = Math.floor(TYPING_BUDGET_MS / length);
+  return Math.max(10, Math.min(naturalDelay, affordable));
 }
 
 /**

@@ -1,0 +1,61 @@
+{
+  "id": "trustradius",
+  "name": "trustradius",
+  "risk": "high",
+  "signupUrl": "https://auth.trustradius.com/login?state=hKFo2SBZWjRIWFhoZ095VmR4aENOQTM3bnRFTXVNRGRXNFBIaqFupWxvZ2luo3RpZNkgcjAxUGotQzhQWWJkWGNyenVfSUtwZUVieU4wN2gyeHejY2lk2SAxQm41NHNobVlWMmpFbE5qZ1NZb2dKNHZWeHZBT3hhSw&client=1Bn54shmYV2jElNjgSYogJ4vVxvAOxaK&protocol=oauth2&prompt=login&scope=openid%20profile%20email&response_type=code&redirect_uri=https%3A%2F%2Ftrustradius.com%2Fapi%2Fauth%2Fcallback&login_hint=&customParams=%7B%22visitorId%22%3A%226ab2ec538dad7f63803be7df%22%2C%22visitId%22%3A%226ab2ec538dad7f63803be7e0%22%2C%22returnTo%22%3A%22%2F%22%7D&allow_signup=true&nonce=PWFA1BMiyT1C00WYQZgH_hokeGD2HuKI10pehDpv9Yk&code_challenge_method=S256&code_challenge=y2wdrmvsugrdavVRZQ3goiNZhkSu3olp--EVKDjO84k",
+  "steps": [
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
+    {
+      "type": "waitFor",
+      "selector": "#email",
+      "timeoutMs": 20000
+    },
+    {
+      "type": "humanPause",
+      "minMs": 600,
+      "maxMs": 1600
+    },
+    {
+      "type": "fill",
+      "selector": "#email",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "#password",
+      "field": "password"
+    },
+    {
+      "type": "captchaGate"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 500,
+      "maxMs": 1200
+    },
+    {
+      "type": "click",
+      "selector": "button:has-text('Signup')"
+    },
+    {
+      "type": "expect",
+      "anyOf": [
+        "text=/check your (e-?mail|inbox)/i",
+        "text=/verify your e-?mail/i",
+        "text=/confirm/i",
+        "text=/welcome/i",
+        "text=/dashboard/i",
+        "text=/thank/i"
+      ],
+      "timeoutMs": 25000
+    }
+  ],
+  "verification": {
+    "mode": "link"
+  },
+  "notes": "ELENDİ 2026-09-23: robots.txt bile Cloudflare managed challenge arkasında — site bot trafiğini aktif engelliyor. Ayrıca review sitesi (G2/Capterra kategorisi) ve signupUrl tek kullanımlık Auth0 state/nonce/code_challenge taşıyor, tekrar kullanılamaz. Otomasyon denenmeyecek.",
+  "solveCaptcha": false
+}

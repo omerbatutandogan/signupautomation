@@ -1,0 +1,73 @@
+{
+  "id": "siteinspire",
+  "name": "siteinspire",
+  "risk": "high",
+  "signupUrl": "https://www.siteinspire.com/signup",
+  "steps": [
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
+    {
+      "type": "waitFor",
+      "selector": "#_r_2_-form-item",
+      "timeoutMs": 20000
+    },
+    {
+      "type": "humanPause",
+      "minMs": 600,
+      "maxMs": 1600
+    },
+    {
+      "type": "fill",
+      "selector": "#_r_0_-form-item",
+      "field": "firstName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#_r_1_-form-item",
+      "field": "lastName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#_r_2_-form-item",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "#_r_3_-form-item",
+      "field": "password"
+    },
+    {
+      "type": "captchaGate"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 500,
+      "maxMs": 1200
+    },
+    {
+      "type": "click",
+      "selector": "button:has-text('Sign Up')"
+    },
+    {
+      "type": "expect",
+      "anyOf": [
+        "text=/check your (e-?mail|inbox)/i",
+        "text=/verify your e-?mail/i",
+        "text=/confirm/i",
+        "text=/welcome/i",
+        "text=/dashboard/i",
+        "text=/thank/i"
+      ],
+      "timeoutMs": 25000
+    }
+  ],
+  "verification": {
+    "mode": "link"
+  },
+  "notes": "ELENDİ 2026-09-23: Vercel Security Checkpoint arkasında, bot doğrulaması aktif (ToS sayfası bile curl ile 429 veriyor). Otomasyon denenmeyecek.",
+  "solveCaptcha": false
+}
