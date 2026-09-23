@@ -16,6 +16,7 @@ import { launchContext } from './browser.js';
 import { createArtifacts, captureFailure } from './artifacts.js';
 import { classify, CaptchaRequiredError, ManualReviewError } from './errors.js';
 import { waitForCaptchaCleared } from './captcha.js';
+import { canAutoVerify, checkDryRunPage } from './dry-run-check.js';
 import { derivePasswordForSite } from '../identity/password.js';
 import { signupEmail, usernameForSite } from '../identity/email.js';
 import { Ledger } from '../integrations/ledger.js';
@@ -189,8 +190,27 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
       // selector'ı bulunmasına rağmen boş kalıyordu ve bu yalnızca
       // ekran görüntüsünden anlaşıldı.
       const shot = await artifacts.shot('dry-run-final');
-      log.info({ shot }, 'DRY-RUN tamamlandı — selector\'lar doğrulandı, submit edilmedi');
-      outcome = { status: 'completed', note: 'dry-run', artifactsDir: artifacts.dir };
+
+      // Ekran görüntüsünün yakaladığını PROGRAMLA da yakala: dry-run
+      // eskiden koşulsuz 'completed' dönüyordu ve içi boş bir config
+      // bile "doğrulandı" sayılabiliyordu. 3430 sitelik listede her
+      // taslağa insan gözüyle bakmak mümkün değil.
+      const issues = await checkDryRunPage(browser.page, ctx.site);
+      for (const i of issues) {
+        log.warn({ kind: i.kind, selector: i.selector }, i.detail);
+      }
+
+      const ok = canAutoVerify(issues);
+      outcome = {
+        status: ok ? 'completed' : 'manual',
+        note: ok
+          ? issues.length > 0
+            ? `dry-run (${issues.length} uyarı)`
+            : 'dry-run'
+          : `dry-run BAŞARISIZ: ${issues.map((i) => i.detail).join(' | ')}`,
+        artifactsDir: artifacts.dir,
+      };
+      log.info({ shot, issues: issues.length, ok }, 'DRY-RUN tamamlandı');
       return outcome;
     }
 
