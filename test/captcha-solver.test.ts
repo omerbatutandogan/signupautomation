@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { parseSiteConfig } from '../src/adapters/schema.js';
+import { shouldSolveCaptcha } from '../src/adapters/generic.js';
 
 /**
  * 2captcha opt-in sınırları.
  *
- * Bu testler bir ToS korumasını koruyor: bazı dizinlerin kullanım
- * şartları captcha bypass'ını yasaklıyor ve ban kalıcı listing kaybı
- * demek. Varsayılanın kapalı kalması kritik.
+ * Davranış BİLEREK değişti: eskiden solveCaptcha VARSAYILAN KAPALIYDI
+ * (her site için elle solveCaptcha:true yazılması gerekiyordu). Proje
+ * hedefi "herhangi bir siteye kaydolabilen, captcha'yı geçebilen" bir
+ * sistem olunca bu varsayılan tersine çevrildi: risk:"high" hariç
+ * VARSAYILAN AÇIK. ToS koruması hâlâ kritik ve hiç gevşemedi — yalnızca
+ * hangi tarafın varsayılan olduğu değişti. shouldSolveCaptcha() bu
+ * kararın TEK yeri.
  */
 
 const base = {
@@ -18,12 +23,12 @@ const base = {
   verification: { mode: 'none' as const },
 };
 
-describe('solveCaptcha opt-in sınırları', () => {
-  it('config’de belirtilmezse VARSAYILAN KAPALI', () => {
+describe('solveCaptcha config alanı', () => {
+  it('config’de belirtilmezse alan undefined kalır (schema seviyesi)', () => {
+    // Şemanın kendisi hâlâ opsiyonel — VARSAYILAN DAVRANIŞ artık
+    // shouldSolveCaptcha()'da, schema'da değil.
     const cfg = parseSiteConfig(base, 'test');
-    // undefined = kapalı. Açıkça true yazılmadıkça çözücü devreye girmez.
     expect(cfg.solveCaptcha).toBeUndefined();
-    expect(Boolean(cfg.solveCaptcha)).toBe(false);
   });
 
   it('açıkça true yazılabilir', () => {
@@ -41,31 +46,60 @@ describe('solveCaptcha opt-in sınırları', () => {
   });
 });
 
-describe('mevcut site configleri', () => {
-  it('hiçbirinde solveCaptcha varsayılan olarak açık değil', async () => {
-    const { listSiteIds, loadSiteConfig } = await import('../src/adapters/registry.js');
-    const ids = await listSiteIds();
-
-    for (const id of ids) {
-      const cfg = await loadSiteConfig(id);
-      if (cfg.solveCaptcha) {
-        // Açıksa risk'i high OLMAMALI — yüksek riskli sitelerde
-        // captcha bypass ToS ihlali.
-        expect(cfg.risk).not.toBe('high');
-      }
-    }
+describe('shouldSolveCaptcha — VARSAYILAN AÇIK, risk:high hariç', () => {
+  it('belirtilmemiş alan + risk:low → AÇIK (yeni varsayılan)', () => {
+    expect(shouldSolveCaptcha({ solveCaptcha: undefined, risk: 'low' })).toBe(true);
   });
 
-  it('yüksek riskli sitede solveCaptcha açık bırakılmamış', async () => {
+  it('belirtilmemiş alan + risk:medium → AÇIK', () => {
+    expect(shouldSolveCaptcha({ solveCaptcha: undefined, risk: 'medium' })).toBe(true);
+  });
+
+  it('açıkça false → KAPALI, risk ne olursa olsun', () => {
+    // alternativeto/blogarama deseni: ToS okunamadığı için bilerek
+    // beklemede tutuluyor, düşük riskli olsalar bile.
+    expect(shouldSolveCaptcha({ solveCaptcha: false, risk: 'low' })).toBe(false);
+  });
+
+  it('risk:high → HER ZAMAN KAPALI, solveCaptcha ne olursa olsun', () => {
+    // BU SATIR ASLA GEVŞEMEMELİ — ToS otomatik erişimi/captcha bypass'ını
+    // açıkça yasaklayan siteler (G2, Capterra, Product Hunt, Podbean,
+    // Spreaker) için tek koruma.
+    expect(shouldSolveCaptcha({ solveCaptcha: undefined, risk: 'high' })).toBe(false);
+    expect(shouldSolveCaptcha({ solveCaptcha: true, risk: 'high' })).toBe(false);
+  });
+
+  it('açıkça true + risk:low → AÇIK', () => {
+    expect(shouldSolveCaptcha({ solveCaptcha: true, risk: 'low' })).toBe(true);
+  });
+});
+
+describe('mevcut site configleri', () => {
+  it('risk:high olan hiçbir sitede solveCaptcha AÇIKÇA true değil', async () => {
+    // İkinci savunma katmanı: config elle risk:high + solveCaptcha:true
+    // yazılmışsa bu bir uyarı sinyali — shouldSolveCaptcha zaten reddeder
+    // ama config'in kendisi böyle bir çelişki taşımamalı.
     const { listSiteIds, loadSiteConfig } = await import('../src/adapters/registry.js');
     const ids = await listSiteIds();
 
     const violations: string[] = [];
     for (const id of ids) {
       const cfg = await loadSiteConfig(id);
-      if (cfg.risk === 'high' && cfg.solveCaptcha) violations.push(id);
+      if (cfg.risk === 'high' && cfg.solveCaptcha === true) violations.push(id);
     }
     expect(violations).toEqual([]);
+  });
+
+  it('risk:high olan HER site için shouldSolveCaptcha false döner', async () => {
+    const { listSiteIds, loadSiteConfig } = await import('../src/adapters/registry.js');
+    const ids = await listSiteIds();
+
+    for (const id of ids) {
+      const cfg = await loadSiteConfig(id);
+      if (cfg.risk === 'high') {
+        expect(shouldSolveCaptcha(cfg)).toBe(false);
+      }
+    }
   });
 });
 

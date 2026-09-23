@@ -288,18 +288,25 @@ async function runStep(ctx: SignupContext, step: Step, index: number): Promise<v
         return;
       }
 
-      // 2captcha YALNIZCA config'inde açıkça izin verilen sitelerde.
-      // Varsayılan kapalı: bazı dizinlerin ToS'u captcha bypass'ını
-      // yasaklıyor ve ban kalıcı listing kaybı demek. risk:"high"
-      // siteler zaten runner'ın risk kapısında eleniyor.
-      if (ctx.site.solveCaptcha && ctx.site.risk === 'high') {
-        // İkinci savunma katmanı: runner'ın risk kapısı zaten buraya
-        // gelmeyi engelliyor ama config elle düzenlenebilir.
+      // 2captcha VARSAYILAN AÇIK — yasak listesi (risk:"high") hariç.
+      //
+      // Projenin amacı "herhangi bir siteye kaydolabilen, captcha'yı
+      // geçebilen" bir sistem. risk:"high" siteler (G2, Capterra,
+      // Product Hunt, Podbean, Spreaker gibi — ToS'u otomatik erişimi
+      // AÇIKÇA yasaklayan) runner'ın risk kapısında zaten eleniyor;
+      // risk:"high" OLMAYAN sitede solveCaptcha yalnızca açıkça `false`
+      // yazılmışsa kapatılabilir.
+      //
+      // İKİNCİ savunma katmanı ayrı: config elle risk:"high" + açıkça
+      // solveCaptcha:true olarak düzenlenirse (shouldSolveCaptcha'nın
+      // varsayılan-açık mantığından BAĞIMSIZ, doğrudan config alanına
+      // bakar) yine de reddedilir.
+      if (ctx.site.solveCaptcha === true && ctx.site.risk === 'high') {
         log.error(
           { siteId: ctx.site.id },
-          'Yüksek riskli sitede solveCaptcha AÇIK — yok sayılıyor (ToS koruması)',
+          'Yüksek riskli sitede solveCaptcha AÇIKÇA true — yok sayılıyor (ToS koruması)',
         );
-      } else if (ctx.site.solveCaptcha) {
+      } else if (shouldSolveCaptcha(ctx.site)) {
         const { solveCaptcha, isSolverConfigured } = await import(
           '../integrations/captcha-solver.js'
         );
@@ -377,6 +384,25 @@ async function pageTextForClassification(ctx: SignupContext): Promise<string> {
     .catch(() => '');
 
   return `${visible} ${hidden}`;
+}
+
+/**
+ * Bu sitede captcha çözümü denenmeli mi?
+ *
+ * VARSAYILAN AÇIK — risk:"high" (ToS otomatik erişimi/captcha bypass'ını
+ * açıkça yasaklayan siteler: G2, Capterra, Product Hunt, Podbean,
+ * Spreaker) hariç. Önceki davranış varsayılan KAPALIYDI ve her site için
+ * elle solveCaptcha:true yazılması gerekiyordu — "herhangi bir siteye
+ * kaydolabilen, captcha'yı geçebilen" hedefiyle çelişiyordu.
+ *
+ * solveCaptcha AÇIKÇA `false` yazılmışsa (site risk:"high" olmasa bile)
+ * bu tercihe saygı duyulur — bazı sitelerin ToS'u okunamadığı için
+ * bilerek beklemede tutuluyor olabilir (alternativeto, blogarama gibi).
+ */
+export function shouldSolveCaptcha(site: Pick<SiteConfig, 'solveCaptcha' | 'risk'>): boolean {
+  if (site.solveCaptcha === false) return false;
+  if (site.risk === 'high') return false;
+  return true;
 }
 
 /** optional adımlarda selector yoksa null döner; değilse hata fırlatır. */
