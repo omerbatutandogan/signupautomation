@@ -30,6 +30,16 @@ export interface FormAnalysis {
   captcha: CaptchaKind | null;
   /** Çerez banner'ı gibi kapatılması gereken öğeler. */
   dismissSelectors: string[];
+  /**
+   * Görünmez AMA zorunlu alanların selector'ları.
+   *
+   * Özel stillenmiş kutucuklar (şartlar onayı gibi) `vis:false` görünür
+   * ama form onlarsız reddedilir. Awwwards'ta tam bu oldu: keşif alanı
+   * attı, kayıt "This value should be true" ile başarısız oldu ve sorun
+   * ancak artifact'tan anlaşıldı. Config yazan kişi bunlara
+   * `label[for=...]` tıklaması eklemeli.
+   */
+  hiddenRequired: string[];
 }
 
 /** Ham alan bilgisi — tarayıcı içinde toplanıyor, Node tarafında eşleniyor. */
@@ -189,11 +199,27 @@ export async function analyzeForm(page: Page): Promise<FormAnalysis> {
     field: mapField(f),
   }));
 
+  // Görünmez AMA zorunlu alanlar: özel stillenmiş kutucuklar böyle.
+  // Awwwards'ın şartlar onayı tam bu durumdaydı (vis:false, required) —
+  // keşif onu atıyordu ve form "This value should be true" ile
+  // reddediliyordu. Atmak yerine RAPORLA: config yazan kişi
+  // label[for=...] tıklaması eklemeli.
+  const hiddenRequired = raw
+    .filter((f) => !f.visible && f.required && f.type !== 'hidden')
+    .map((f) => suggestSelector(f));
+
   const submitSelector = pickSubmit(visible);
   const captcha = await detectCaptchaOnPage(page);
   const dismissSelectors = await findDismissable(page);
 
-  return { url: page.url(), fields, submitSelector, captcha, dismissSelectors };
+  return {
+    url: page.url(),
+    fields,
+    submitSelector,
+    captcha,
+    dismissSelectors,
+    hiddenRequired,
+  };
 }
 
 /** Gönder butonunu seçer — metni kayıt anlamı taşıyan tercih edilir. */

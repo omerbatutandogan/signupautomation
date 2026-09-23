@@ -15,6 +15,41 @@ import type { SignupCandidate } from './find-signup.js';
 export const UNVERIFIED_MARKER = 'OTOMATİK ÜRETİLDİ — doğrulanmadı';
 
 /**
+ * Kayıt başarısını gösteren varsayılan desenler.
+ *
+ * TEK KELİMELİK GENEL DESENLER KULLANILMIYOR. Eskiden 'confirm',
+ * 'welcome', 'dashboard', 'thank' vardı ve üç sitede yanlış pozitif
+ * verdiler — en kötüsü Awwwards'ta: kayıt BAŞARISIZKEN sayfa başlığındaki
+ * "Welcome to the community!" eşleşti, sistem başarı sandı ve 10 dakika
+ * boşuna doğrulama maili bekledi.
+ *
+ * Buradaki her desen, kayıt akışına ÖZGÜ bir ifade içeriyor: doğrulama
+ * maili gönderildiğini ya da hesabın oluştuğunu söylüyor. Site farklı bir
+ * metin kullanıyorsa expect başarısız olur ve artifact'tan gerçek metin
+ * okunup config'e yazılır — sessizce yanlış başarı üretmekten iyidir.
+ */
+/**
+ * Doğrulanmamış taslakta mail bekleme süresi (3 dk).
+ *
+ * Varsayılan 10 dakika doğrulanmış configler için doğru ama taslakta
+ * mode:'link' yalnızca bir TAHMİN. Mail göndermeyen sitede her deneme 10
+ * dakika yakıyordu; 10words, alternative ve ontoplist'in üçü de sonunda
+ * mode:'none' oldu ve bu süre tamamen boşa gitti.
+ */
+export const DRAFT_EMAIL_TIMEOUT_MS = 180_000;
+
+export const DEFAULT_EXPECT_PATTERNS: readonly string[] = [
+  'text=/check your (e-?mail|inbox)/i',
+  'text=/verify your (e-?mail|account)/i',
+  'text=/verification (e-?mail|link|message)/i',
+  'text=/confirmation (e-?mail|link) (has been )?sent/i',
+  'text=/we(\'ve| have) sent you/i',
+  'text=/activate your account/i',
+  'text=/account (has been )?created/i',
+  'text=/registration (successful|complete)/i',
+];
+
+/**
  * ToS'unda otomatik erişimi/captcha atlatmayı açıkça yasaklayan siteler.
  * Bunlar en değerli listing'ler — ban kalıcı kayıp demek.
  * Gartner mülkleri (getapp, softwareadvice) Capterra ile aynı ToS'u paylaşıyor.
@@ -115,14 +150,7 @@ function buildSteps(input: GenerateInput): { steps: Step[]; unmapped: string[] }
 
   steps.push({
     type: 'expect',
-    anyOf: [
-      'text=/check your (e-?mail|inbox)/i',
-      'text=/verify your e-?mail/i',
-      'text=/confirm/i',
-      'text=/welcome/i',
-      'text=/dashboard/i',
-      'text=/thank/i',
-    ],
+    anyOf: [...DEFAULT_EXPECT_PATTERNS],
     timeoutMs: 25_000,
   });
 
@@ -156,6 +184,13 @@ export function generateConfig(input: GenerateInput): GenerateResult {
   if (analysis.captcha) {
     warnings.push(`Captcha tespit edildi: ${analysis.captcha}`);
   }
+  if (analysis.hiddenRequired?.length) {
+    // Görünmez zorunlu alan = sessiz form reddi. Awwwards'ta şartlar
+    // kutucuğu böyleydi; check() çalışmıyor, label[for=...] tıklanmalı.
+    warnings.push(
+      `GÖRÜNMEZ ZORUNLU ALAN (label[for=...] tıklaması gerekebilir): ${analysis.hiddenRequired.join(', ')}`,
+    );
+  }
 
   const notes = [
     UNVERIFIED_MARKER,
@@ -176,7 +211,13 @@ export function generateConfig(input: GenerateInput): GenerateResult {
     steps,
     // Varsayılan link: mail gelmezse ilk gerçek çalıştırmada none'a çevrilir
     // (10words'te tam bu oldu).
-    verification: { mode: 'link' as const },
+    //
+    // Ama BEKLEME KISA: doğrulanmamış taslakta mod yalnızca bir tahmin ve
+    // mail göndermeyen sitede tam süre beklemek her denemede 10 dakika
+    // yakıyordu (10words, alternative, ontoplist — üçü de sonunda
+    // mode:'none' oldu). 3 dakika gelmeyen mail çoğunlukla hiç gelmiyor;
+    // config doğrulanınca bu satır kaldırılıp tam süreye dönülür.
+    verification: { mode: 'link' as const, timeoutMs: DRAFT_EMAIL_TIMEOUT_MS },
   };
 
   // Ürettiğimiz taslak kendi şemamızdan geçmeli — geçmezse üretici bozuk.

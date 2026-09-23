@@ -265,6 +265,7 @@ function analysis(partial: Partial<FormAnalysis> = {}): FormAnalysis {
     submitSelector: "button:has-text('Sign Up')",
     captcha: null,
     dismissSelectors: [],
+    hiddenRequired: [],
     ...partial,
   };
 }
@@ -275,6 +276,68 @@ const candidate: SignupCandidate = {
   hops: 0,
   method: 'direct-path',
 };
+
+describe('generateConfig — taslak kalitesi', () => {
+  /**
+   * Bu üç test, elle düzeltilen 8 config'ten çıkan derslerin kodda
+   * kalmasını sağlıyor. Üçü de gerçek hatalardan geldi.
+   */
+
+  it('expect deseni TEK KELİMELİK genel ifade İÇERMEZ', () => {
+    const { config } = generateConfig({
+      id: 'example',
+      name: 'Example',
+      website: 'example.com',
+      candidate,
+      analysis: analysis(),
+    });
+
+    const expectStep = config.steps.find((s) => s.type === 'expect');
+    const patterns = (expectStep?.anyOf ?? []).join(' ');
+
+    // Awwwards gerçek vakası: kayıt BAŞARISIZKEN sayfa başlığındaki
+    // "Welcome to the community!" /welcome/i ile eşleşti, sistem başarı
+    // sandı ve 10 dakika boşuna mail bekledi.
+    expect(patterns).not.toMatch(/\/welcome\/i/);
+    expect(patterns).not.toMatch(/\/confirm\/i/);
+    expect(patterns).not.toMatch(/\/dashboard\/i/);
+    expect(patterns).not.toMatch(/\/thank\/i/);
+
+    // Yine de kayıt akışına özgü desenler bulunmalı.
+    expect(patterns).toMatch(/check your/);
+  });
+
+  it('taslakta mail beklemesi KISA — mod yalnızca tahmin', () => {
+    const { config } = generateConfig({
+      id: 'example',
+      name: 'Example',
+      website: 'example.com',
+      candidate,
+      analysis: analysis(),
+    });
+
+    // 10words, alternative, ontoplist: üçü de mode:'link' taslağıyla
+    // başlayıp sonunda mode:'none' oldu. Her denemede 10 dakika bekleme
+    // tamamen boşa gidiyordu.
+    expect(config.verification.timeoutMs).toBeLessThanOrEqual(180_000);
+  });
+
+  it('görünmez zorunlu alanı UYARIR, sessizce atmaz', () => {
+    const { warnings } = generateConfig({
+      id: 'example',
+      name: 'Example',
+      website: 'example.com',
+      candidate,
+      analysis: analysis({ hiddenRequired: ["input[name='terms']"] }),
+    });
+
+    // Awwwards şartlar kutucuğu vis:false + required idi; keşif onu
+    // atıyordu ve form "This value should be true" ile reddediliyordu.
+    const hit = warnings.find((w) => /GÖRÜNMEZ ZORUNLU/.test(w));
+    expect(hit).toBeDefined();
+    expect(hit).toContain("input[name='terms']");
+  });
+});
 
 describe('generateConfig', () => {
   it('şemadan geçen config üretir', () => {
