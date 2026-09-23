@@ -53,6 +53,22 @@ export interface RunOutcome {
   artifactsDir?: string;
 }
 
+/**
+ * "Hesap zaten mevcut" sonucunun terminal durumu.
+ *
+ * BAŞARISIZLIK DEĞİL: amaç hesap açmaktı ve hesap var. Tek e-posta
+ * mimarisi gereği o hesap bize ait — site bizim adresimizle "already
+ * taken" diyorsa daha önce biz kaydolmuşuz.
+ *
+ * `failed` saymak üç şeyi bozuyordu: Sheet'te "Başarısız" görünüp
+ * gereksiz elle kayda yönlendiriyor, run-batch her turda yeniden
+ * deneyip boşuna trafik üretiyor, ve "hesabımız var" bilgisi hiçbir
+ * yerde kayıtlı olmuyordu.
+ */
+export function alreadyExistsOutcome(): RunOutcome {
+  return { status: 'completed', note: 'Hesap zaten mevcut (daha önce açılmış)' };
+}
+
 async function loadProfile(): Promise<SignupProfile> {
   const raw = await readFile('src/profile/geo-new.json', 'utf8');
   return JSON.parse(raw) as SignupProfile;
@@ -156,7 +172,7 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
     const result = await adapter.signup(ctx);
 
     if (result.status === 'already_exists') {
-      outcome = { status: 'failed', note: 'Hesap zaten mevcut', artifactsDir: artifacts.dir };
+      outcome = { ...alreadyExistsOutcome(), artifactsDir: artifacts.dir };
       return outcome;
     }
 
@@ -174,9 +190,17 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
     // Doğrulama gerekmiyorsa (StackShare gibi otomatik doğrulayan siteler).
     if (!result.needsEmailVerification) {
       const ok = (await adapter.confirmSuccess?.(ctx)) ?? true;
+      // Hesap açıldı ama doğrulanmadıysa bunu sakla: "doğrulama
+      // gerekmiyor" ile "site maili göndermiyor, hesap Pending kaldı"
+      // farklı şeyler ve Sheet'i okuyan kişi için ikisi aynı görünmemeli.
+      const unverified = adapter.verification.unverifiedAccount === true;
       outcome = {
         status: ok ? 'completed' : 'manual',
-        note: ok ? 'e-posta doğrulaması gerekmiyor' : 'başarı doğrulanamadı',
+        note: ok
+          ? unverified
+            ? 'hesap açıldı — site doğrulama maili göndermiyor, DOĞRULANMAMIŞ'
+            : 'e-posta doğrulaması gerekmiyor'
+          : 'başarı doğrulanamadı',
         artifactsDir: artifacts.dir,
       };
       return outcome;

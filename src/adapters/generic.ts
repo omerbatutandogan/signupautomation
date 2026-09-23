@@ -6,7 +6,12 @@
  */
 
 import type { Locator } from 'playwright';
-import { classifyPageText, PermanentError, TransientError } from '../core/errors.js';
+import {
+  classifyPageText,
+  isAlreadyExists,
+  PermanentError,
+  TransientError,
+} from '../core/errors.js';
 import { detectCaptcha, needsHumanIntervention } from '../core/captcha.js';
 import {
   moveMouseTo,
@@ -238,8 +243,17 @@ async function runStep(ctx: SignupContext, step: Step, index: number): Promise<v
       }
 
       // Beklenen görünmedi — sayfa metni neden olduğunu söylüyor olabilir.
-      const text = await ctx.page.innerText('body').catch(() => '');
+      const text = await pageTextForClassification(ctx);
       const classified = classifyPageText(text);
+
+      // "Hesap zaten mevcut" burada FIRLATILMAZ: signup() adımlar bittikten
+      // sonra aynı metni yeniden sınıflandırıp already_exists döndürüyor ve
+      // runner onu completed sayıyor. Buradan fırlatmak o dalı tamamen
+      // devre dışı bırakıyordu — hesabı olan site "Başarısız" kaydediliyordu.
+      if (isAlreadyExists(classified)) {
+        log.info('Hesap zaten mevcut — signup() sonucu belirleyecek');
+        return;
+      }
       if (classified) throw classified;
 
       if (step.optional) return;
@@ -313,6 +327,43 @@ async function runStep(ctx: SignupContext, step: Step, index: number): Promise<v
   }
 }
 
+/**
+ * Sınıflandırma için sayfa metni.
+ *
+ * innerText YETMİYOR: bazı siteler hata bildirimini `display:none` bir
+ * elemanda tutup JS ile gösteriyor. alternative.me gerçek vakası — sayfa
+ * "User already exists" diyordu ama mesaj gizli bir <article> içindeydi,
+ * innerText onu görmüyordu ve çalıştırma "Beklenen içerik görünmedi" ile
+ * başarısız sayılıyordu.
+ *
+ * Görünür metne ek olarak bildirim/hata taşıyan elemanların metni de
+ * okunuyor. Tüm HTML'i taramak yanlış pozitif riski taşır (gizli şablon
+ * metinleri, JS string'leri), bu yüzden yalnızca bilinen bildirim
+ * desenleri.
+ */
+async function pageTextForClassification(ctx: SignupContext): Promise<string> {
+  const visible = await ctx.page.innerText('body').catch(() => '');
+
+  const hidden = await ctx.page
+    .evaluate(() => {
+      const selectors = [
+        '.notification',
+        '.alert',
+        '[role="alert"]',
+        '.error',
+        '.errorlist',
+        '.help.is-danger',
+        '.invalid-feedback',
+      ];
+      return Array.from(document.querySelectorAll(selectors.join(',')))
+        .map((el) => el.textContent ?? '')
+        .join(' ');
+    })
+    .catch(() => '');
+
+  return `${visible} ${hidden}`;
+}
+
 /** optional adımlarda selector yoksa null döner; değilse hata fırlatır. */
 async function tryLocate(
   ctx: SignupContext,
@@ -345,9 +396,9 @@ export function makeGenericAdapter(cfg: SiteConfig): SiteAdapter {
       }
 
       // Submit sonrası sayfa metni "zaten kayıtlı" diyor olabilir.
-      const text = await ctx.page.innerText('body').catch(() => '');
+      const text = await pageTextForClassification(ctx);
       const classified = classifyPageText(text);
-      if (classified instanceof PermanentError && /zaten mevcut/i.test(classified.message)) {
+      if (isAlreadyExists(classified)) {
         return { status: 'already_exists' };
       }
       if (classified) throw classified;

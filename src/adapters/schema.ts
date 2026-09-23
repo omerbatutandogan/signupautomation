@@ -118,6 +118,15 @@ export const StepSchema = StepUnion.superRefine((step, ctx) => {
 export const VerificationSpecSchema = z.object({
   /** 'none' → site e-postayı otomatik doğruluyor (StackShare'de görüldü). */
   mode: z.enum(['link', 'code', 'none']),
+  /**
+   * mode:'none' iken hesap DOĞRULANMAMIŞ kalıyorsa true.
+   *
+   * İki durumu ayırır: 10words doğrulama istemiyor (hesap tam yetkili),
+   * alternative.me istiyor ama maili hiç göndermiyor (hesap "Pending
+   * User" kalıyor). İkisine de "doğrulama gerekmiyor" yazmak Sheet'i
+   * okuyan için yanıltıcı.
+   */
+  unverifiedAccount: z.boolean().optional(),
   from: z.string().optional(),
   subjectContains: z.array(z.string()).optional(),
   /** Verilirse generic skorlama yerine bu regex kullanılır — daha deterministik. */

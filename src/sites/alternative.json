@@ -59,9 +59,10 @@
     }
   ],
   "verification": {
-    "mode": "link"
+    "mode": "none",
+    "unverifiedAccount": true
   },
-  "notes": "Doğrulandı (dry-run, 22.09.2026) Keşif: link-follow, 1 sıçrama, güven: high. Captcha görülmedi. Submit sonrası doğrudan dashboard'a düşüyor (\"Pending User\" + \"Unverified Email-Address\" rozeti); ara \"check your email\" sayfası YOK — expect buna göre ayarlandı.",
+  "notes": "DOĞRULANMAMIŞ HESAP: site doğrulama maili HİÇ GÖNDERMİYOR (Gmail from:alternative.me → 0 sonuç, 2026-09-23; daha önce 10 dk da beklenmişti). Hesap açılıyor, dashboard'a düşüyor ama \"Pending User\" + \"Unverified Email-Address\" rozetiyle kalıyor; listing gönderimi bu haliyle çalışmayabilir. mode:'link' bırakılırsa her çalıştırma 10 dk boşuna bekliyordu. unverifiedAccount:true eklendi ama ledger notu HENÜZ DOĞRULANMADI (günlük limit doldu) — sonraki çalıştırmada not \"hesap açıldı — site doğrulama maili göndermiyor, DOĞRULANMAMIŞ\" olmalı. Hata mesajı display:none bir elemanda (\"User already exists\"), innerText görmüyordu — pageTextForClassification bunu çözdü. Keşif: link-follow, 1 sıçrama. Captcha görülmedi.",
   "success": {
     "anyOf": [
       "text=/total submissions/i",

@@ -94,6 +94,14 @@ export type FieldName =
 export interface VerificationSpec {
   /** 'link' → maildeki linke tıkla. 'code' → kodu forma gir. 'none' → doğrulama yok. */
   mode: 'link' | 'code' | 'none';
+  /**
+   * mode:'none' iken hesap DOĞRULANMAMIŞ kalıyorsa true.
+   *
+   * 10words doğrulama istemiyor (hesap tam yetkili); alternative.me
+   * istiyor ama maili hiç göndermiyor (hesap "Pending User" kalıyor).
+   * İkisine de "doğrulama gerekmiyor" yazmak yanıltıcı.
+   */
+  unverifiedAccount?: boolean;
   from?: string;
   subjectContains?: string[];
   /** Verilirse link çıkarmada generic skorlama yerine bu regex kullanılır. */

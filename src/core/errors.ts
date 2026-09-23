@@ -66,6 +66,10 @@ const TRANSIENT_NET = /net::ERR_(CONNECTION|NETWORK|TIMED_OUT|NAME_NOT_RESOLVED|
 /** Sayfada "bu e-posta zaten kayıtlı" anlamına gelen kalıplar. */
 export const ALREADY_EXISTS_PATTERNS = [
   /already (been )?(registered|taken|in use|exists)/i,
+  // "User already exists", "Account already exists" — araya özne girdiği
+  // için yukarıdaki desen bunu KAÇIRIYORDU (alternative.me gerçek metni:
+  // "User already exists. Please choose a different email.").
+  /(user|account|e-?mail|address) already exists/i,
   /e-?mail .{0,20}(already|mevcut|kayıtlı)/i,
   /zaten (kayıtlı|kullanımda|alınmış)/i,
   /bu e-?posta .{0,20}kullanılıyor/i,
@@ -108,6 +112,16 @@ export function classify(err: unknown): ErrorClass {
   }
 
   return 'permanent';
+}
+
+/**
+ * Bu sınıflandırma "hesap zaten var" mı?
+ *
+ * İki yerde gerekiyor (expect adımı ve signup sonucu) ve mesaj metnine
+ * göre karşılaştırma yapıldığı için tek yerde tutulmalı.
+ */
+export function isAlreadyExists(err: unknown): boolean {
+  return err instanceof PermanentError && /zaten mevcut/i.test(err.message);
 }
 
 /** Sayfa metninden bilinen kalıcı/manuel durumları tespit eder. */
