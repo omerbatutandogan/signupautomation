@@ -3,7 +3,7 @@
   "name": "AlternativeTo",
   "risk": "medium",
   "signupUrl": "https://alternativeto.net/signup",
-  "notes": "CAPTCHA DUVARI — form sorunu ÇÖZÜLDÜ, engel yalnızca hCaptcha. Gerçek çalıştırma (2026-09-23) formu doldurup captchaGate'e kadar geldi, orada \"insan müdahalesi gerekiyor\" ile manual döndü — yani eski \"Selector bulunamadı: input[type=email]\" sorunu YOK, form headed tarayıcıda render ediliyor. solveCaptcha AÇILMADI: ToS sayfası (alternativeto.net/terms/) curl'e 403 veriyor, okunamıyor; yasak olup olmadığı bilinemeyen sitede captcha bypass savunulabilir değil (blogarama ile aynı karar). Telegram insan-devralma kurulunca ya da ToS okunabilince yeniden değerlendir. Username maxlength=25, üretilen 15 karakter. Ayrı şifre tekrar/şartlar alanı yok; şartlar kabulü submit ile örtük.",
+  "notes": "CAPTCHA DUVARI — form sorunu ÇÖZÜLDÜ, engel yalnızca hCaptcha. Gerçek çalıştırma (2026-09-23) formu doldurup captchaGate'e kadar geldi, orada \"insan müdahalesi gerekiyor\" ile manual döndü — yani eski \"Selector bulunamadı: input[type=email]\" sorunu YOK, form headed tarayıcıda render ediliyor. solveCaptcha AÇILMADI: ToS üç farklı yolda da (/terms/, /terms-of-service/, /about/terms/, /legal/) 403 veriyor, okunamıyor. robots.txt /signup'ı engellemiyor AMA /user/ ve /account/ yasaklı — kayıt sonrası gidilecek yerler. Bu ikisi birlikte captcha bypass için yeterli gerekçe vermiyor; yasak olup olmadığı bilinemeyen sitede captcha bypass savunulabilir değil (blogarama ile aynı karar). Telegram insan-devralma kurulunca ya da ToS okunabilince yeniden değerlendir. Username maxlength=25, üretilen 15 karakter. Ayrı şifre tekrar/şartlar alanı yok; şartlar kabulü submit ile örtük.",
   "steps": [
     {
       "type": "goto",
