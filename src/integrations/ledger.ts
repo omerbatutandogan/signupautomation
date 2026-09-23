@@ -75,7 +75,8 @@ export class Ledger {
         started_at  INTEGER NOT NULL,
         finished_at INTEGER,
         note        TEXT,
-        terminal    INTEGER NOT NULL DEFAULT 0
+        terminal    INTEGER NOT NULL DEFAULT 0,
+        dry_run     INTEGER NOT NULL DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS idx_attempts_site ON attempts(site_id);
       CREATE INDEX IF NOT EXISTS idx_attempts_started ON attempts(started_at);
@@ -95,6 +96,30 @@ export class Ledger {
         seen_at    INTEGER NOT NULL
       );
     `);
+
+    if (this.addColumnIfMissing('attempts', 'dry_run', 'INTEGER NOT NULL DEFAULT 0')) {
+      // Kolon YENİ eklendi: geçmiş satırlarda dry-run bilgisi yalnızca
+      // notta duruyor. Notu açıkça "dry-run" diyenleri işaretle —
+      // yalnızca KESİN olanlar, tahmin yok. Notu başka şey diyen eski
+      // dry-run'lar (captcha'da bitenler gibi) gerçek sayılmaya devam
+      // eder; bu güvenli taraf.
+      this.db.exec("UPDATE attempts SET dry_run = 1 WHERE note LIKE '%dry-run%'");
+    }
+  }
+
+  /**
+   * Mevcut tabloya kolon ekler; zaten varsa dokunmaz.
+   *
+   * CREATE TABLE IF NOT EXISTS eski veritabanlarını güncellemiyor —
+   * dry_run kolonu eklendiğinde mevcut ledger'lar onsuz kalırdı.
+   * DEFAULT 0 sayesinde eski satırlar "gerçek deneme" sayılır, ki
+   * doğrusu da bu: dry-run olduklarını bilmiyoruz.
+   */
+  private addColumnIfMissing(table: string, column: string, definition: string): boolean {
+    const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (cols.some((c) => c.name === column)) return false;
+    this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    return true;
   }
 
   /**
@@ -151,10 +176,12 @@ export class Ledger {
 
   // ── Denemeler ───────────────────────────────────────────────────────────
 
-  startAttempt(siteId: SiteId, runId: string): number {
+  startAttempt(siteId: SiteId, runId: string, dryRun = false): number {
     const result = this.db
-      .prepare('INSERT INTO attempts (site_id, run_id, status, started_at) VALUES (?, ?, ?, ?)')
-      .run(siteId, runId, 'running', Date.now());
+      .prepare(
+        'INSERT INTO attempts (site_id, run_id, status, started_at, dry_run) VALUES (?, ?, ?, ?, ?)',
+      )
+      .run(siteId, runId, 'running', Date.now(), dryRun ? 1 : 0);
     return Number(result.lastInsertRowid);
   }
 
@@ -184,6 +211,11 @@ export class Ledger {
    * Dry-run hariç: submit etmediği için siteye kayıt trafiği üretmiyor
    * ve günlük limitin koruduğu "aynı IP'den kaç kayıt" sinyalini
    * etkilemiyor. Saymak, teşhis çalışmasını gerçek kotayla yarıştırıyordu.
+   *
+   * Ayrım dry_run KOLONUNDAN yapılıyor, not metninden değil: not sonuca
+   * göre değişiyor ve captcha'da biten bir dry-run "Captcha insan
+   * müdahalesi gerektiriyor" notuyla kaydedilip sayıma sızıyordu
+   * (ledger 13/12 gösteriyordu).
    */
   countToday(): number {
     const startOfDay = new Date();
@@ -193,7 +225,7 @@ export class Ledger {
         `SELECT COUNT(*) AS n FROM attempts
          WHERE started_at >= ?
            AND status NOT LIKE 'skipped%'
-           AND (note IS NULL OR note NOT LIKE '%dry-run%')`,
+           AND dry_run = 0`,
       )
       .get(startOfDay.getTime()) as { n: number };
     return row.n;

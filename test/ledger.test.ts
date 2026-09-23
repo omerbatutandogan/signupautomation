@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import Database from 'better-sqlite3';
 import { Ledger } from '../src/integrations/ledger.js';
 
 let dir: string;
@@ -101,12 +102,33 @@ describe('denemeler', () => {
   it('günlük sayım dry-run’ları hariç tutar', () => {
     const real = ledger.startAttempt('site-a', 'run-1');
     ledger.finishAttempt(real, 'completed');
-    const dry = ledger.startAttempt('site-b', 'run-1');
+    const dry = ledger.startAttempt('site-b', 'run-1', true);
     ledger.finishAttempt(dry, 'completed', 'dry-run');
 
     // Dry-run SUBMIT ETMİYOR: siteye kayıt trafiği üretmediği için
     // "günde kaç kayıt" limitini tüketmemeli. Saymak, teşhis
     // çalışmasını gerçek kayıt kotasıyla yarıştırıyordu.
+    expect(ledger.countToday()).toBe(1);
+  });
+
+  it('NOTU dry-run demeyen bir dry-run’ı da hariç tutar', () => {
+    // GERÇEK HATA: alternativeto dry-run'ı captcha'da takıldı, notu
+    // "Captcha insan müdahalesi gerektiriyor" oldu ve içinde "dry-run"
+    // geçmediği için sayıma sızdı — ledger 13/12 gösterdi. Ayrım artık
+    // not metninden değil dry_run KOLONUNDAN yapılıyor.
+    const real = ledger.startAttempt('site-a', 'run-1');
+    ledger.finishAttempt(real, 'completed');
+    const dry = ledger.startAttempt('site-b', 'run-1', true);
+    ledger.finishAttempt(dry, 'manual', 'Captcha insan müdahalesi gerektiriyor: hcaptcha');
+
+    expect(ledger.countToday()).toBe(1);
+  });
+
+  it('dry_run varsayılanı false — parametresiz çağrı gerçek sayılır', () => {
+    // Muafiyetin fazla gevşemediğini garanti eder: yalnızca AÇIKÇA
+    // dry-run denilen denemeler muaf.
+    const id = ledger.startAttempt('site-a', 'run-1');
+    ledger.finishAttempt(id, 'failed', 'Beklenen içerik görünmedi');
     expect(ledger.countToday()).toBe(1);
   });
 
@@ -154,5 +176,69 @@ describe('görülen mailler', () => {
   it('aynı id tekrar işaretlenince patlamaz', () => {
     ledger.markMessageSeen('msg-1', 'site-a');
     expect(() => ledger.markMessageSeen('msg-1', 'site-a')).not.toThrow();
+  });
+});
+
+describe('şema migrasyonu', () => {
+  /** dry_run kolonu OLMAYAN eski bir veritabanı üretir. */
+  function makeLegacyDb(file: string): void {
+    const db = new Database(file);
+    db.exec(`
+      CREATE TABLE attempts (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        site_id     TEXT NOT NULL,
+        run_id      TEXT NOT NULL,
+        status      TEXT NOT NULL,
+        started_at  INTEGER NOT NULL,
+        finished_at INTEGER,
+        note        TEXT,
+        terminal    INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+    db.prepare(
+      'INSERT INTO attempts (site_id, run_id, status, started_at) VALUES (?, ?, ?, ?)',
+    ).run('eski-site', 'eski-run', 'completed', Date.now());
+    db.close();
+  }
+
+  it('eski veritabanına dry_run kolonunu ekler ve veriyi korur', () => {
+    const file = join(dir, 'legacy.sqlite');
+    makeLegacyDb(file);
+
+    // Ledger açılışı migrasyonu çalıştırır.
+    const migrated = new Ledger(file);
+    migrated.close();
+
+    // Sonucu bağımsız bir bağlantıyla doğrula.
+    const check = new Database(file, { readonly: true });
+    try {
+      const cols = (check.prepare('PRAGMA table_info(attempts)').all() as Array<{ name: string }>)
+        .map((c) => c.name);
+      expect(cols).toContain('dry_run');
+
+      // Mevcut satır kaybolmamalı; eski satırlar "gerçek deneme" sayılır
+      // (dry-run olup olmadıklarını bilmiyoruz).
+      const row = check.prepare('SELECT site_id, dry_run FROM attempts').get() as {
+        site_id: string;
+        dry_run: number;
+      };
+      expect(row.site_id).toBe('eski-site');
+      expect(row.dry_run).toBe(0);
+    } finally {
+      check.close();
+    }
+  });
+
+  it('ikinci açılışta ALTER TABLE tekrar çalışmaz', () => {
+    const file = join(dir, 'twice.sqlite');
+    makeLegacyDb(file);
+
+    const first = new Ledger(file);
+    first.close();
+    // Kolon zaten varken tekrar eklemeye çalışmak SQLite hatası verirdi.
+    expect(() => {
+      const second = new Ledger(file);
+      second.close();
+    }).not.toThrow();
   });
 });

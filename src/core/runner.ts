@@ -128,7 +128,7 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
     return exitEarly({ status: 'skipped_locked', note: `kilit sahibi: ${lock?.run_id ?? '?'}` });
   }
 
-  const attemptId = ledger.startAttempt(siteId, runId);
+  const attemptId = ledger.startAttempt(siteId, runId, opts.dryRun);
   let outcome: RunOutcome = { status: 'error' };
   let browser: Awaited<ReturnType<typeof launchContext>> | null = null;
   // Sheet'e yazmak için finally'de gerekiyor; try içinde tanımlanınca erişilemez.
