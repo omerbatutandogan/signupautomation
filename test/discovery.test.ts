@@ -29,6 +29,7 @@ function rawField(partial: Partial<Parameters<typeof mapField>[0]>): Parameters<
     required: false,
     visible: true,
     text: '',
+    isTypeahead: false,
     ...partial,
   };
 }
@@ -117,6 +118,29 @@ describe('mapField — alan eşleme', () => {
   it('telefon alanını bilinçli olarak eşlemez — SMS doğrulama kapsam dışı', () => {
     expect(mapField(rawField({ name: 'user_data[phone]' }))).toBeNull();
     expect(mapField(rawField({ placeholder: 'Contact Number' }))).toBeNull();
+  });
+
+  it('typeahead alanını semantik eşlemez — yazmak yetmiyor, seçim gerekiyor', () => {
+    // Gerçek vaka: 360quadrants ülke alanı düz metin gibi görünüyordu
+    // (type=text) ama Twitter Typeahead'di. "Turkey" yazmak sunucudaki
+    // gizli country_id'yi doldurmuyordu — öneriden SEÇİM şarttı.
+    // Semantik ad atarsak generic fill adımı yazıp submit eder, form
+    // sessizce reddedilir.
+    expect(mapField(rawField({ name: 'country_name', isTypeahead: true }))).toBeNull();
+  });
+
+  it('site adı alanını website URL alanıyla karıştırmaz', () => {
+    // Gerçek vaka: ontoplist'te #sitename (type=text) URL alanı sanıldı
+    // ve https://geo.new yazıldı — oysa "sitename" kelimesi "site"
+    // içeriyor diye eski geniş /site/ deseni onu URL'e eşliyordu. Asıl
+    // URL alanı ayrı, type=url olan #url'di.
+    expect(mapField(rawField({ name: 'sitename', type: 'text' }))).toBe('companyName');
+    expect(mapField(rawField({ name: 'site_title', type: 'text' }))).toBe('companyName');
+  });
+
+  it('type=url alanını website olarak eşler', () => {
+    expect(mapField(rawField({ name: 'url', type: 'url' }))).toBe('website');
+    expect(mapField(rawField({ name: 'website', type: 'url' }))).toBe('website');
   });
 });
 
@@ -248,6 +272,7 @@ function analysis(partial: Partial<FormAnalysis> = {}): FormAnalysis {
         required: true,
         selector: '#email',
         field: 'email',
+        isTypeahead: false,
       },
       {
         tag: 'input',
@@ -260,12 +285,14 @@ function analysis(partial: Partial<FormAnalysis> = {}): FormAnalysis {
         required: true,
         selector: '#password',
         field: 'password',
+        isTypeahead: false,
       },
     ],
     submitSelector: "button:has-text('Sign Up')",
     captcha: null,
     dismissSelectors: [],
     hiddenRequired: [],
+    hiddenCheckboxes: [],
     ...partial,
   };
 }
@@ -336,6 +363,109 @@ describe('generateConfig — taslak kalitesi', () => {
     const hit = warnings.find((w) => /GÖRÜNMEZ ZORUNLU/.test(w));
     expect(hit).toBeDefined();
     expect(hit).toContain("input[name='terms']");
+  });
+
+  it('terms checkbox’ı id varsa label[for=...] tıklamasına çevirir', () => {
+    // Awwwards ve ontoplist gerçek vakası: şartlar kutucuğu native
+    // input'u CSS ile GÖRÜNMEZ yapılmış, yerine görsel bir label
+    // konmuştu. locator.check() "element is not visible" ile
+    // patlıyordu; elle label[for=id] tıklamasına çevrilmesi gerekti.
+    // Artık bu OTOMATİK üretiliyor.
+    const withTermsId = analysis({
+      fields: [
+        ...analysis().fields,
+        {
+          tag: 'input',
+          type: 'checkbox',
+          name: 'agree_terms',
+          id: 'terms-checkbox',
+          placeholder: '',
+          ariaLabel: '',
+          maxLength: null,
+          required: true,
+          selector: '#terms-checkbox',
+          field: 'terms',
+          isTypeahead: false,
+        },
+      ],
+    });
+
+    const { config } = generateConfig({
+      id: 'example',
+      name: 'Example',
+      website: 'example.com',
+      candidate,
+      analysis: withTermsId,
+    });
+
+    const termsStep = config.steps.find(
+      (s) => s.type === 'click' && s.selector === "label[for='terms-checkbox']",
+    );
+    expect(termsStep).toBeDefined();
+    // Eski check() adımı ARTIK üretilmemeli — id varken check() yerine
+    // click() tercih ediliyor.
+    const oldCheckStep = config.steps.find(
+      (s) => s.type === 'check' && s.selector === '#terms-checkbox',
+    );
+    expect(oldCheckStep).toBeUndefined();
+  });
+
+  it('görünmez zorunlu checkbox otomatik label[for=id] adımına çevrilir', () => {
+    // Awwwards GERÇEK vakası: şartlar checkbox'ı required=FALSE idi
+    // (form kütüphanesi zorunluluğu JS ile doğruluyordu), bu yüzden ne
+    // fields'e ne eski hiddenRequired'a giriyordu — sorun ancak submit
+    // sonrası "This value should be true" hatasından elle anlaşılmıştı.
+    // hiddenCheckboxes bu boşluğu isim eşleşmesiyle (terms/agree/...)
+    // kapatıyor ve generateConfig otomatik click adımı üretiyor.
+    const { config } = generateConfig({
+      id: 'example',
+      name: 'Example',
+      website: 'example.com',
+      candidate,
+      analysis: analysis({
+        hiddenCheckboxes: [{ id: 'register_termsAndConditions', selector: '#register_termsAndConditions' }],
+      }),
+    });
+
+    const step = config.steps.find(
+      (s) => s.type === 'click' && s.selector === "label[for='register_termsAndConditions']",
+    );
+    expect(step).toBeDefined();
+    expect(step?.optional).toBe(true);
+  });
+
+  it('id’siz terms checkbox’ında eski check() adımına düşer', () => {
+    const withTermsNoId = analysis({
+      fields: [
+        ...analysis().fields,
+        {
+          tag: 'input',
+          type: 'checkbox',
+          name: 'agree_terms',
+          id: '',
+          placeholder: '',
+          ariaLabel: '',
+          maxLength: null,
+          required: true,
+          selector: "input[name='agree_terms']",
+          field: 'terms',
+          isTypeahead: false,
+        },
+      ],
+    });
+
+    const { config } = generateConfig({
+      id: 'example',
+      name: 'Example',
+      website: 'example.com',
+      candidate,
+      analysis: withTermsNoId,
+    });
+
+    const checkStep = config.steps.find(
+      (s) => s.type === 'check' && s.selector === "input[name='agree_terms']",
+    );
+    expect(checkStep).toBeDefined();
   });
 });
 
@@ -445,6 +575,7 @@ describe('generateConfig', () => {
           required: true,
           selector: "input[name='mystery']",
           field: null,
+          isTypeahead: false,
         },
       ],
     });

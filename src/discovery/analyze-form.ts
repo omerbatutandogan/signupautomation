@@ -21,6 +21,8 @@ export interface FormField {
   selector: string;
   /** Eşleşen semantik alan; null ise config'de TODO olarak işaretlenir. */
   field: FieldName | null;
+  /** Typeahead/autocomplete widget mı — bkz. RawField.isTypeahead. */
+  isTypeahead: boolean;
 }
 
 export interface FormAnalysis {
@@ -40,6 +42,15 @@ export interface FormAnalysis {
    * `label[for=...]` tıklaması eklemeli.
    */
   hiddenRequired: string[];
+  /**
+   * Görünmez zorunlu checkbox'lar — otomatik çözüm için id ile birlikte.
+   *
+   * hiddenRequired yalnızca uyarı metni üretir. Bu liste generateConfig
+   * tarafından OKUNUP otomatik `label[for=id]` click adımına çevrilir —
+   * Awwwards ve ontoplist'te elle yapılan düzeltmenin otomatiği.
+   * id yoksa (nadir) bu listeye girmez, hiddenRequired uyarısı kalır.
+   */
+  hiddenCheckboxes: Array<{ id: string; selector: string }>;
 }
 
 /** Ham alan bilgisi — tarayıcı içinde toplanıyor, Node tarafında eşleniyor. */
@@ -54,6 +65,15 @@ interface RawField {
   required: boolean;
   visible: boolean;
   text: string;
+  /**
+   * Typeahead/autocomplete widget sinyali.
+   *
+   * 360quadrants'ta country_name düz metin gibi görünüyordu ama
+   * Twitter Typeahead'di (tt-input + tt-hint çifti) — yazmak yetmiyordu,
+   * açılan öneriden SEÇİM yapılması gerekiyordu. Tespit edilirse field
+   * ataması yapılmaz, notes'a uyarı düşer.
+   */
+  isTypeahead: boolean;
 }
 
 /**
@@ -76,6 +96,12 @@ export function mapField(f: RawField): FieldName | null {
 
   if (f.type === 'email') return 'email';
   if (f.type === 'password') return 'password';
+
+  // Typeahead: düz metin yazmak yetmez, öneri listesinden seçim
+  // gerekir. Semantik ad atamak yanıltıcı olur (generic fill adımı
+  // yazıp submit eder, sunucu gizli id boş olduğu için reddeder —
+  // 360quadrants'ta tam bu oldu). null dönüp notes'ta ayrı uyarılıyor.
+  if (f.isTypeahead) return null;
 
   // Checkbox kontrolü isim tabanlı kurallardan ÖNCE gelmeli: aksi halde
   // "marketing_emails" kutucuğu e-posta ALANI sanılıp doldurulmaya
@@ -106,12 +132,26 @@ export function mapField(f: RawField): FieldName | null {
 
   if (f.tag === 'textarea') return 'description';
 
-  if (f.type === 'url' || /website|url|site|link/.test(hint)) return 'website';
+  // type="url" KESİN sinyal — isim tabanlı tahminden önce gelmeli.
+  // Gerçek vaka: ontoplist'te #sitename (type=text, name'de "site"
+  // geçiyor) URL alanı sanıldı ve https://geo.new yazıldı; oysa asıl
+  // URL alanı ayrı bir type=url input'tu (#url). "site" kelimesi
+  // "sitename"in İÇİNDE geçtiği için eski geniş /site/ deseni ikisini
+  // ayırt edemiyordu.
+  if (f.type === 'url') return 'website';
 
   if (/user\s*name|username|nick|handle|login/.test(hint)) return 'username';
   if (/first\s*name|fname|given/.test(hint)) return 'firstName';
   if (/last\s*name|lname|surname|family/.test(hint)) return 'lastName';
   if (/full\s*name|your\s*name|^name$/.test(hint)) return 'fullName';
+
+  // "sitename"/"company name"/"site title" gibi AD alanları website
+  // kuralından ÖNCE değerlendirilir — "site" kelimesini içerse bile
+  // bunlar URL değil, metin adı bekliyor.
+  if (/site[\s_-]*name|company[\s_-]*name|business[\s_-]*name|site[\s_-]*title/.test(hint)) return 'companyName';
+
+  if (/website|\burl\b|\blink\b|\bsite\b/.test(hint)) return 'website';
+
   if (/company|organization|startup|product|project|tool|app/.test(hint)) return 'companyName';
   if (/tagline|slogan|headline|short\s*desc|one\s*line/.test(hint)) return 'tagline';
   if (/descri|about|summary|bio|pitch/.test(hint)) return 'description';
@@ -159,6 +199,17 @@ export async function analyzeForm(page: Page): Promise<FormAnalysis> {
     return nodes.map((el) => {
       const input = el as HTMLInputElement;
       const rect = el.getBoundingClientRect();
+      const cls = el.className || '';
+      const role = el.getAttribute('role') || '';
+      const autocomplete = el.getAttribute('aria-autocomplete') || '';
+      // Görünürlük eşiği yalnızca boyuta bakıyordu (width/height > 0).
+      // Bazı özel checkbox'lar display:none yerine opacity:0 ya da
+      // visibility:hidden kullanıyor — bunlar boyut olarak "görünür"
+      // ölçülür ama kullanıcı onları göremez/tıklayamaz. Awwwards'takine
+      // benzer bir vakayı bu üç CSS yolunun herhangi biriyle kaçırmamak
+      // için computed style de kontrol ediliyor.
+      const style = window.getComputedStyle(el);
+      const cssHidden = style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0';
       return {
         tag: el.tagName.toLowerCase(),
         type: input.type ?? '',
@@ -168,8 +219,12 @@ export async function analyzeForm(page: Page): Promise<FormAnalysis> {
         ariaLabel: el.getAttribute('aria-label') ?? '',
         maxLength: input.maxLength ?? -1,
         required: input.required ?? false,
-        visible: rect.width > 0 && rect.height > 0,
+        visible: rect.width > 0 && rect.height > 0 && !cssHidden,
         text: (el.textContent ?? '').trim().slice(0, 40),
+        isTypeahead:
+          /tt-input|tt-hint|typeahead|autocomplete-input/.test(cls) ||
+          role === 'combobox' ||
+          autocomplete === 'list',
       };
     });
   });
@@ -197,16 +252,32 @@ export async function analyzeForm(page: Page): Promise<FormAnalysis> {
     required: f.required,
     selector: suggestSelector(f),
     field: mapField(f),
+    isTypeahead: f.isTypeahead,
   }));
 
   // Görünmez AMA zorunlu alanlar: özel stillenmiş kutucuklar böyle.
-  // Awwwards'ın şartlar onayı tam bu durumdaydı (vis:false, required) —
-  // keşif onu atıyordu ve form "This value should be true" ile
-  // reddediliyordu. Atmak yerine RAPORLA: config yazan kişi
-  // label[for=...] tıklaması eklemeli.
-  const hiddenRequired = raw
-    .filter((f) => !f.visible && f.required && f.type !== 'hidden')
-    .map((f) => suggestSelector(f));
+  //
+  // İKİ ayrı sinyal kabul ediliyor, ikisi de gerçek vakalardan:
+  //  (a) HTML required attribute'ü var — sunucu/tarayıcı doğrulaması.
+  //  (b) Görünmez bir checkbox, adı terms/agree/accept/tos/policy
+  //      içeriyor — Awwwards vakası TAM BÖYLEYDİ: required=FALSE
+  //      (form kütüphanesi zorunluluğu JS ile doğruluyordu, HTML
+  //      attribute'ü hiç yoktu) ve keşif bu yüzden onu TAMAMEN
+  //      kaçırıyordu — ne fields'e ne hiddenRequired'a giriyordu. Sorun
+  //      ancak submit sonrası "This value should be true" hatasından
+  //      elle anlaşılmıştı. Şartlar kutucukları neredeyse hiçbir zaman
+  //      HTML required taşımaz ama fiilen zorunludur; isim eşleşmesi bu
+  //      boşluğu kapatıyor.
+  const looksLikeTerms = (f: RawField): boolean =>
+    f.type === 'checkbox' && /terms|agree|accept|tos\b|policy/i.test(`${f.name} ${f.id}`);
+
+  const hiddenRequiredFields = raw.filter(
+    (f) => !f.visible && f.type !== 'hidden' && (f.required || looksLikeTerms(f)),
+  );
+  const hiddenRequired = hiddenRequiredFields.map((f) => suggestSelector(f));
+  const hiddenCheckboxes = hiddenRequiredFields
+    .filter((f) => f.type === 'checkbox' && f.id)
+    .map((f) => ({ id: f.id, selector: suggestSelector(f) }));
 
   const submitSelector = pickSubmit(visible);
   const captcha = await detectCaptchaOnPage(page);
@@ -219,6 +290,7 @@ export async function analyzeForm(page: Page): Promise<FormAnalysis> {
     captcha,
     dismissSelectors,
     hiddenRequired,
+    hiddenCheckboxes,
   };
 }
 

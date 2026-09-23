@@ -120,7 +120,18 @@ function buildSteps(input: GenerateInput): { steps: Step[]; unmapped: string[] }
     }
 
     if (f.field === 'terms') {
-      steps.push({ type: 'check', selector: f.selector, optional: true });
+      // Özel stillenmiş checkbox'lar genelde GÖRÜNMEZ input + görünür
+      // label ikilisi (native checkbox'ı CSS ile gizleyip yerine kendi
+      // görselini koyan yaygın bir desen). locator.check() görünmez
+      // elemanda "element is not visible" ile patlıyor — Awwwards ve
+      // ontoplist'te ikisi de böyleydi ve elle label[for=id] tıklamasına
+      // çevrilmesi gerekti. id varsa bunu OTOMATİK üret; id yoksa
+      // (id'siz checkbox nadir ama olur) eski check() adımına düş.
+      if (f.id) {
+        steps.push({ type: 'click', selector: `label[for='${f.id}']`, optional: true });
+      } else {
+        steps.push({ type: 'check', selector: f.selector, optional: true });
+      }
       continue;
     }
 
@@ -136,6 +147,14 @@ function buildSteps(input: GenerateInput): { steps: Step[]; unmapped: string[] }
       // email/password dışındakiler formda olmayabilir — opsiyonel.
       ...(f.field === 'email' || f.field === 'password' ? {} : { optional: true }),
     });
+  }
+
+  // Görünmez zorunlu checkbox'lar: fill/check döngüsü bunları hiç
+  // görmüyordu çünkü analyzeForm görünmez alanları fields'e katmıyor.
+  // Awwwards ve ontoplist'te bu, config yazan kişinin elle eklediği
+  // label[for=id] tıklamasıydı — artık otomatik üretiliyor.
+  for (const cb of analysis.hiddenCheckboxes) {
+    steps.push({ type: 'click', selector: `label[for='${cb.id}']`, optional: true });
   }
 
   // Captcha tespit edildiyse gate ekle; edilmediyse de ekliyoruz çünkü
