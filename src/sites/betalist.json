@@ -3,7 +3,7 @@
   "name": "BetaList",
   "risk": "low",
   "signupUrl": "https://betalist.com/sign_up",
-  "notes": "Selector'lar gerçek DOM'dan doğrulandı. CLOUDFLARE TURNSTILE VAR — npm run inspect bunu GÖRMÜYOR (sonradan yükleniyor) ama gerçek çalıştırmada çıkıyor. Turnstile yüklenince form yeniden render olup alanları SIFIRLIYOR; captchaGate SUBMIT'ten hemen önce: Turnstile geç yükleniyor, erken kontrol onu kaçırıyordu. Ayrıca şifre alanları ilk denemede boş kalabiliyor — generic adapter artık yeniden deniyor. Mail gönderdiği kesin: Faz 0'da .eml toplandı, mail-parse çözüyor. Username maxlength=18. Submit: input[name='commit']. 2captcha AÇIK: Turnstile kendiliğinden çözülmüyordu, ToS otomatik erişimi yasaklamıyor ve robots.txt boş.",
+  "notes": "ALAN SIFIRLANMASI ÇÖZÜLDÜ (2026-09-23), KAYIT HENÜZ DENENMEDİ. Eskiden captchaGate fill adımlarından SONRA geliyordu: Turnstile geç yükleniyor, yüklenince form yeniden render olup DOLDURULMUŞ alanları siliyordu ve şifreler boş submit ediliyordu. Çözüm: captchaGate fill'lerden ÖNCE (adım 4) — Turnstile önce yüklensin, render bitince alanlar doldurulsun. KANIT: dry-run ekran görüntüsü artık dört alanı da DOLU gösteriyor (username, email, iki şifre) ve Turnstile widget görünür durumda, form sıfırlanmamış. Kalan engel yalnızca Turnstile kutucuğu; solveCaptcha:true zaten açık ve daha önce kanıtlanmıştı (sitekey bulundu, 8 sn, 837 karakter token). Gerçek kayıt denemesi günlük limit (12/12) nedeniyle yapılamadı — taze limitle tek deneme yeterli olmalı. Selector'lar gerçek DOM'dan doğrulandı.",
   "steps": [
     {
       "type": "goto",
@@ -27,6 +27,9 @@
       "type": "humanPause",
       "minMs": 3000,
       "maxMs": 5000
+    },
+    {
+      "type": "captchaGate"
     },
     {
       "type": "humanPause",
@@ -57,9 +60,6 @@
       "type": "humanPause",
       "minMs": 500,
       "maxMs": 1200
-    },
-    {
-      "type": "captchaGate"
     },
     {
       "type": "click",

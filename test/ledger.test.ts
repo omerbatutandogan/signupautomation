@@ -97,6 +97,27 @@ describe('denemeler', () => {
     // skipped gerçek bir deneme değil — günlük limiti tüketmemeli.
     expect(ledger.countToday()).toBe(1);
   });
+
+  it('günlük sayım dry-run’ları hariç tutar', () => {
+    const real = ledger.startAttempt('site-a', 'run-1');
+    ledger.finishAttempt(real, 'completed');
+    const dry = ledger.startAttempt('site-b', 'run-1');
+    ledger.finishAttempt(dry, 'completed', 'dry-run');
+
+    // Dry-run SUBMIT ETMİYOR: siteye kayıt trafiği üretmediği için
+    // "günde kaç kayıt" limitini tüketmemeli. Saymak, teşhis
+    // çalışmasını gerçek kayıt kotasıyla yarıştırıyordu.
+    expect(ledger.countToday()).toBe(1);
+  });
+
+  it('gerçek denemeleri saymaya DEVAM eder', () => {
+    // Limit koruması gevşetildi — fazla gevşemediğini doğrula.
+    for (const [i, site] of ['a', 'b', 'c'].entries()) {
+      const id = ledger.startAttempt(`site-${site}`, `run-${i}`);
+      ledger.finishAttempt(id, 'failed', 'Beklenen içerik görünmedi');
+    }
+    expect(ledger.countToday()).toBe(3);
+  });
 });
 
 describe('kimlik bilgileri', () => {

@@ -37,8 +37,19 @@
     {
       "type": "fill",
       "selector": "input[name='user_data[country_name]']",
-      "value": "Turkey",
+      "value": "Turk",
       "optional": true
+    },
+    {
+      "type": "waitFor",
+      "selector": ".tt-suggestion",
+      "timeoutMs": 8000,
+      "optional": true
+    },
+    {
+      "type": "click",
+      "selector": ".tt-suggestion:has-text(\"Turkey (+90)\")",
+      "optional": false
     },
     {
       "type": "fill",
@@ -51,6 +62,11 @@
       "selector": "#companies",
       "field": "companyName",
       "optional": true
+    },
+    {
+      "type": "humanPause",
+      "minMs": 800,
+      "maxMs": 1500
     },
     {
       "type": "captchaGate"
@@ -68,17 +84,15 @@
       "type": "expect",
       "anyOf": [
         "text=/check your (e-?mail|inbox)/i",
-        "text=/verify your e-?mail/i",
-        "text=/confirm/i",
-        "text=/welcome/i",
-        "text=/dashboard/i",
-        "text=/thank/i"
+        "text=/verification (e-?mail|link)/i",
+        "text=/verify your (e-?mail|account)/i",
+        "text=/activation/i"
       ],
-      "timeoutMs": 25000
+      "timeoutMs": 20000
     }
   ],
   "verification": {
     "mode": "link"
   },
-  "notes": "Doğrulandı (dry-run, 22.09.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. country_name ve phone elle sabit değerlerle dolduruldu — otomatik eşlenemiyorlardı. phone ZORUNLU alan (boş bırakılınca kırmızı çerçeve + submit reddi); burada SMS doğrulaması yok, yalnızca form alanı."
+  "notes": "ÜLKE SORUNU ÇÖZÜLDÜ (2026-09-23), KAYIT HENÜZ KANITLANMADI. country_name düz metin değil Twitter Typeahead (tt-input + tt-hint çifti). \"Turkey\" YAZMAK yetmiyordu: sunucu \"User country is required\" diyordu çünkü gizli user_data[country_id] boş kalıyordu. ÖLÇÜLDÜ: \"Turk\" yaz → .tt-suggestion \"Turkey (+90)\" çıkıyor → tıkla → country_id=\"145\" doluyor. Bu adım dry-run ile doğrulanamaz (click atlanıyor). Son gerçek denemede submit sonrası ANA SAYFAYA yönlendirdi, hata mesajı YOK ve 360quadrants'tan mail GELMEDİ — kayıt tamamlandı mı belirsiz. expect artık yalnızca gerçek kayıt kanıtı arıyor (mail/doğrulama metni); \"ana sayfaya düştü\" kanıt SAYILMIYOR çünkü Awwwards'ta benzer genel desen yanlış pozitif vermişti. SIRADAKİ ADIM: taze limitle bir gerçek deneme, sonuç mail gelip gelmediğine göre okunacak. phone ZORUNLU (boş bırakılınca kırmızı çerçeve + submit reddi); SMS doğrulaması yok, yalnızca form alanı. company alanı da typeahead ama zorunlu değil."
 }

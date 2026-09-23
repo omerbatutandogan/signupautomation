@@ -3,9 +3,12 @@
   "name": "AlternativeTo",
   "risk": "medium",
   "signupUrl": "https://alternativeto.net/signup",
-  "notes": "Selector'lar gerçek DOM'dan doğrulandı (npm run inspect). hCaptcha VAR — Faz 0'da elle kayıtta görülmemişti, otomatik trafikte çıkıyor. Username maxlength=25, üretilen 15 karakter. Form yalnızca headed tarayıcıda render ediliyor. Ayrı 'şifre tekrar' ve 'şartlar' alanı yok; şartlar kabulü submit ile örtük.",
+  "notes": "CAPTCHA DUVARI — form sorunu ÇÖZÜLDÜ, engel yalnızca hCaptcha. Gerçek çalıştırma (2026-09-23) formu doldurup captchaGate'e kadar geldi, orada \"insan müdahalesi gerekiyor\" ile manual döndü — yani eski \"Selector bulunamadı: input[type=email]\" sorunu YOK, form headed tarayıcıda render ediliyor. solveCaptcha AÇILMADI: ToS sayfası (alternativeto.net/terms/) curl'e 403 veriyor, okunamıyor; yasak olup olmadığı bilinemeyen sitede captcha bypass savunulabilir değil (blogarama ile aynı karar). Telegram insan-devralma kurulunca ya da ToS okunabilince yeniden değerlendir. Username maxlength=25, üretilen 15 karakter. Ayrı şifre tekrar/şartlar alanı yok; şartlar kabulü submit ile örtük.",
   "steps": [
-    { "type": "goto", "url": "{{signupUrl}}" },
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
     {
       "type": "dismiss",
       "selectors": [
@@ -16,14 +19,43 @@
       ],
       "optional": true
     },
-    { "type": "waitFor", "selector": "input[type='email']", "timeoutMs": 20000 },
-    { "type": "humanPause", "minMs": 600, "maxMs": 1600 },
-    { "type": "fill", "field": "username", "selector": "input[type='text']" },
-    { "type": "fill", "field": "email", "selector": "input[type='email']" },
-    { "type": "fill", "field": "password", "selector": "input[type='password']" },
-    { "type": "captchaGate" },
-    { "type": "humanPause", "minMs": 500, "maxMs": 1200 },
-    { "type": "click", "selector": "button:has-text('Create account')" },
+    {
+      "type": "waitFor",
+      "selector": "input[type='email']",
+      "timeoutMs": 20000
+    },
+    {
+      "type": "humanPause",
+      "minMs": 600,
+      "maxMs": 1600
+    },
+    {
+      "type": "fill",
+      "field": "username",
+      "selector": "input[type='text']"
+    },
+    {
+      "type": "fill",
+      "field": "email",
+      "selector": "input[type='email']"
+    },
+    {
+      "type": "fill",
+      "field": "password",
+      "selector": "input[type='password']"
+    },
+    {
+      "type": "captchaGate"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 500,
+      "maxMs": 1200
+    },
+    {
+      "type": "click",
+      "selector": "button:has-text('Create account')"
+    },
     {
       "type": "expect",
       "anyOf": [
@@ -38,12 +70,22 @@
   "verification": {
     "mode": "link",
     "from": "*@alternativeto.net",
-    "subjectContains": ["confirm", "verify"],
+    "subjectContains": [
+      "confirm",
+      "verify"
+    ],
     "linkPattern": "https://alternativeto\\.net/api/auth/verify-email\\?token=[^\\s\"'<>]+",
     "timeoutMs": 600000
   },
   "success": {
-    "afterVerifyUrlContains": ["/user/", "/account"],
-    "anyOf": ["text=/verified/i", "text=/welcome/i"]
-  }
+    "afterVerifyUrlContains": [
+      "/user/",
+      "/account"
+    ],
+    "anyOf": [
+      "text=/verified/i",
+      "text=/welcome/i"
+    ]
+  },
+  "solveCaptcha": false
 }

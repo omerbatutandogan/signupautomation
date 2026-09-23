@@ -178,13 +178,22 @@ export class Ledger {
   }
 
   /** Bugün başlatılan, atlanmamış deneme sayısı — günlük limit kapısı. */
+  /**
+   * Bugün yapılan GERÇEK kayıt denemesi sayısı.
+   *
+   * Dry-run hariç: submit etmediği için siteye kayıt trafiği üretmiyor
+   * ve günlük limitin koruduğu "aynı IP'den kaç kayıt" sinyalini
+   * etkilemiyor. Saymak, teşhis çalışmasını gerçek kotayla yarıştırıyordu.
+   */
   countToday(): number {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
     const row = this.db
       .prepare(
         `SELECT COUNT(*) AS n FROM attempts
-         WHERE started_at >= ? AND status NOT LIKE 'skipped%'`,
+         WHERE started_at >= ?
+           AND status NOT LIKE 'skipped%'
+           AND (note IS NULL OR note NOT LIKE '%dry-run%')`,
       )
       .get(startOfDay.getTime()) as { n: number };
     return row.n;

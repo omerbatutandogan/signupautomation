@@ -107,11 +107,18 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
     return exitEarly({ status: 'skipped_terminal', note: `önceki sonuç: ${previous.status}` });
   }
 
-  // 3. Günlük limit — insan-benzeri hacim.
-  const todayCount = ledger.countToday();
-  if (todayCount >= env.DAILY_LIMIT) {
-    log.info({ todayCount, limit: env.DAILY_LIMIT }, 'Günlük limit doldu');
-    return exitEarly({ status: 'skipped_limit', note: `bugün ${todayCount}/${env.DAILY_LIMIT}` });
+  // 3. Günlük limit — insan-benzeri KAYIT hacmi.
+  //
+  // Dry-run muaf: submit etmiyor, yani siteye hesap açma trafiği
+  // üretmiyor. Limitin koruduğu şey "aynı IP'den günde kaç kayıt"
+  // sinyali; selector doğrulaması onu ihlal etmez. Dry-run'ı da saymak
+  // teşhis çalışmasını gerçek kayıt kotasıyla yarıştırıyordu.
+  if (!opts.dryRun) {
+    const todayCount = ledger.countToday();
+    if (todayCount >= env.DAILY_LIMIT) {
+      log.info({ todayCount, limit: env.DAILY_LIMIT }, 'Günlük limit doldu');
+      return exitEarly({ status: 'skipped_limit', note: `bugün ${todayCount}/${env.DAILY_LIMIT}` });
+    }
   }
 
   // 4. Kilit — atomik, aynı siteyi iki kez işlemeyi engeller.
