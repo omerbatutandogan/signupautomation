@@ -26,6 +26,8 @@ import type {
   CaptchaKind,
   SignupContext,
   SignupProfile,
+  SiteAdapter,
+  SiteConfig,
   TerminalStatus,
 } from './types.js';
 
@@ -35,6 +37,20 @@ export interface RunOptions {
   force?: boolean;
   log: Logger;
   ledger: Ledger;
+  /**
+   * Config dosyasından değil doğrudan verilen adapter.
+   *
+   * `signup <url>` komutu için: keşfedilen bir site src/sites/'a hiç
+   * yazılmadan çalıştırılabilsin diye. Verilmezse eskisi gibi
+   * loadAdapter(siteId) ile src/sites/<siteId>.json okunur.
+   *
+   * VERİLİYORSA siteConfig da verilmeli — ctx.site bu ikisinden
+   * ayrı bir yerden (loadSiteConfigFor → dosya) okunuyordu ve
+   * makeGenericAdapter'ın sardığı config'e dışarıdan erişim yok.
+   */
+  adapter?: SiteAdapter;
+  /** adapter verildiğinde ctx.site için kullanılacak gerçek config. */
+  siteConfig?: SiteConfig;
   /**
    * Sheet geri bildirimi — opsiyonel. Verilmezse runner Sheet'siz çalışır.
    * Hataları çağıran taraf yutar; Sheet otorite değil, görünürlük katmanı.
@@ -80,7 +96,7 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
   const log = opts.log.child({ siteId, runId });
   const { ledger } = opts;
 
-  const adapter = await loadAdapter(siteId);
+  const adapter = opts.adapter ?? (await loadAdapter(siteId));
 
   /**
    * Erken çıkışlarda da Sheet'e yazar. Aksi halde atlanan siteler Sheet'te
@@ -165,7 +181,7 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
 
     const ctx: SignupContext = {
       page: browser.page,
-      site: await loadSiteConfigFor(adapter),
+      site: opts.siteConfig ?? (await loadSiteConfigFor(adapter)),
       identity,
       profile,
       log,

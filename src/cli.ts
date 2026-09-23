@@ -6,12 +6,19 @@
  */
 
 import pino from 'pino';
+import { chromium } from 'playwright';
 import { env } from './config.js';
 import { runSite } from './core/runner.js';
 import { Ledger } from './integrations/ledger.js';
 import { listSiteIds, loadSiteConfig } from './adapters/registry.js';
 import { derivePasswordForSite } from './identity/password.js';
 import { createGmailClient, verifyGmailAccess } from './integrations/gmail.js';
+import { siteIdFromWebsite } from './integrations/sheet.js';
+import { findSignupPage } from './discovery/find-signup.js';
+import { analyzeForm } from './discovery/analyze-form.js';
+import { generateConfig } from './discovery/generate-config.js';
+import { makeGenericAdapter } from './adapters/generic.js';
+import { mkdir, writeFile } from 'node:fs/promises';
 
 const logger = pino({
   level: env.LOG_LEVEL,
@@ -34,6 +41,10 @@ Komutlar:
   run-one <siteId>        Tek siteyi uçtan uca işle
     --dry-run             Selector'ları doğrula, submit etme
     --force               Terminal durumu aşıp tekrar dene
+  signup <website>        Config dosyası OLMADAN kayıt dener
+    (varsayılan --dry-run; --live ile gerçek kayıt)
+    --live                Gerçek kayıt yap (varsayılan dry-run)
+    --save                Başarılıysa config'i src/sites/'a kaydet
   run-batch [N]           Sheet'ten N siteyi sırayla işle (varsayılan 5)
     --dry-run             Submit etme, selector doğrula
     --no-wait             Siteler arası beklemeyi atla (test için)
@@ -93,6 +104,117 @@ async function cmdRunOne(siteId: string, flags: Set<string>): Promise<number> {
     }
 
     return outcome.status === 'completed' || outcome.status.startsWith('skipped') ? 0 : 1;
+  } finally {
+    ledger.close();
+  }
+}
+
+/**
+ * Config dosyası OLMADAN tek geçişte kayıt dener.
+ *
+ * Akış: keşif (findSignupPage) → form analizi (analyzeForm, genişletilmiş
+ * sezgisel kurallarla) → geçici config üretimi (bellekte, dosyaya
+ * yazılmadan) → runSite (opts.adapter ile, src/sites/ okumadan).
+ *
+ * Varsayılan --dry-run: gerçek siteye iz bırakmadan (yarım hesap, spam
+ * bildirimi) selector'ları doğrular. Gerçek kayıt için --live gerekir.
+ * Otomatik çözüm başarısız olursa (tanınmayan bir desen, kritik alan
+ * boş) komut KOD YAZMAZ — 'manual' ile durur ve artifact bırakır. Bu
+ * sistemin dürüst sınırı: kural tükendiğinde sessizce yanlış davranmak
+ * yerine açıkça durmak.
+ */
+async function cmdSignup(website: string, flags: Set<string>): Promise<number> {
+  const siteId = siteIdFromWebsite(website);
+  if (!siteId) {
+    console.error(`Geçersiz URL, siteId türetilemedi: ${website}`);
+    return 1;
+  }
+
+  const dryRun = !flags.has('--live');
+  console.log(`\n🔎 ${website} keşfediliyor (siteId: ${siteId}, ${dryRun ? 'dry-run' : 'GERÇEK ÇALIŞTIRMA'})...`);
+
+  // 1. Keşif — ayrı, geçici bir tarayıcıda. runSite kendi context'ini
+  // açacak; ikisini karıştırmak (aynı persistent profile) durumu
+  // karmaşıklaştırır.
+  const discoveryBrowser = await chromium.launch({
+    headless: true,
+    args: ['--disable-blink-features=AutomationControlled'],
+  });
+
+  let siteConfig: Awaited<ReturnType<typeof generateConfig>>['config'];
+  try {
+    const page = await discoveryBrowser.newPage();
+    try {
+      const search = await findSignupPage(page, website);
+
+      if (search.kind === 'bot_protected') {
+        console.error(`🛡️  Bot koruması tespit edildi — otomasyon denenmeyecek: ${website}`);
+        return 1;
+      }
+      if (search.kind === 'not_found') {
+        console.error(`❌ Kayıt sayfası bulunamadı: ${website}`);
+        return 1;
+      }
+
+      const analysis = await analyzeForm(page);
+      const { config, warnings } = generateConfig({
+        id: siteId,
+        name: siteId,
+        website,
+        candidate: search.candidate,
+        analysis,
+      });
+
+      const blocking = warnings.filter((w) => w.startsWith('KULLANILAMAZ'));
+      if (blocking.length > 0) {
+        console.error(`❌ Kullanılamaz form: ${blocking.join(' | ')}`);
+        return 1;
+      }
+
+      if (config.risk === 'high') {
+        console.error(`⛔ ToS otomatik kaydı yasaklıyor — manuel listeye: ${website}`);
+        return 1;
+      }
+
+      siteConfig = config;
+      console.log(`✅ Kayıt sayfası bulundu: ${search.candidate.url}`);
+      if (warnings.length > 0) {
+        for (const w of warnings) console.log(`   ⚠️  ${w}`);
+      }
+    } finally {
+      await page.close().catch(() => undefined);
+    }
+  } finally {
+    await discoveryBrowser.close();
+  }
+
+  // 2. Gerçek çalıştırma (ya da dry-run) — config dosyaya YAZILMADAN
+  // runSite'a doğrudan adapter olarak geçiriliyor.
+  const adapter = makeGenericAdapter(siteConfig);
+  const ledger = new Ledger();
+  try {
+    const outcome = await runSite(siteId, {
+      log: logger,
+      ledger,
+      dryRun,
+      force: true, // geçici çalıştırma, terminal durum kontrolü anlamsız
+      adapter,
+      siteConfig,
+    });
+
+    const icon =
+      outcome.status === 'completed' ? '✅' : outcome.status === 'manual' ? '🙋' : '❌';
+    console.log(`\n${icon} ${siteId}: ${outcome.status}`);
+    if (outcome.note) console.log(`   ${outcome.note}`);
+    if (outcome.artifactsDir) console.log(`   artifacts: ${outcome.artifactsDir}`);
+
+    if (flags.has('--save')) {
+      await mkdir('src/sites', { recursive: true });
+      await writeFile(`src/sites/${siteId}.json`, `${JSON.stringify(siteConfig, null, 2)}\n`);
+      console.log(`   💾 Config kaydedildi: src/sites/${siteId}.json (DOĞRULANMADI damgalı)`);
+    }
+
+    return outcome.status === 'completed' ? 0 : 1;
   } finally {
     ledger.close();
   }
@@ -372,6 +494,16 @@ async function main(): Promise<void> {
         break;
       }
       code = await cmdRunOne(siteId, flags);
+      break;
+    }
+    case 'signup': {
+      const website = positional[0];
+      if (!website) {
+        console.error('Website gerekli: npm run cli -- signup <website>');
+        code = 1;
+        break;
+      }
+      code = await cmdSignup(website, flags);
       break;
     }
     case 'status':
