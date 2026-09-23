@@ -124,6 +124,37 @@ export function isAlreadyExists(err: unknown): boolean {
   return err instanceof PermanentError && /zaten mevcut/i.test(err.message);
 }
 
+/**
+ * Submit sonrası URL değişimi zayıf bir başarı sinyali sayılır mı?
+ *
+ * Genel expect desenleri (confirm/welcome/thank) tek başına yanlış
+ * pozitif verdi (Awwwards: kayıt BAŞARISIZKEN sayfa başlığındaki
+ * "Welcome" eşleşmişti). Bu yüzden URL değişimini de bağımsız bir ikinci
+ * sinyal olarak topluyoruz — expect deseni tutmasa bile config yazan
+ * kişiye (ya da otomatik akışa) "sayfa signup'tan uzaklaştı" bilgisini
+ * veriyor. TEK BAŞINA "kayıt tamamlandı" ANLAMINA GELMEZ — yalnızca bir
+ * ipucu, `classifyPageText`'in yerini almaz.
+ *
+ * alternative.me deseni: submit sonrası doğrudan /dashboard'a düşüyor,
+ * ara "check your email" sayfası yok. Bu sinyal o davranışı yakalar.
+ */
+export function urlChangedAfterSubmit(beforeUrl: string, afterUrl: string): boolean {
+  if (beforeUrl === afterUrl) return false;
+  try {
+    const before = new URL(beforeUrl);
+    const after = new URL(afterUrl);
+    // Farklı domaine gitmek submit sonucu değil, muhtemelen yönlendirme
+    // hatası ya da açılan yeni sekme/pencere — sinyal sayılmaz.
+    if (before.hostname !== after.hostname) return false;
+    // Kayıt/giriş yollarından biri hâlâ path'te duruyorsa muhtemelen
+    // form hata verip aynı sayfada kaldı (query string değişmiş olabilir).
+    if (/\/(sign\s*up|register|join|create-account)/i.test(after.pathname)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Sayfa metninden bilinen kalıcı/manuel durumları tespit eder. */
 export function classifyPageText(text: string): PermanentError | ManualReviewError | null {
   for (const re of MANUAL_REVIEW_PATTERNS) {

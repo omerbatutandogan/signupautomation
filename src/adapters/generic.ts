@@ -11,6 +11,7 @@ import {
   isAlreadyExists,
   PermanentError,
   TransientError,
+  urlChangedAfterSubmit,
 } from '../core/errors.js';
 import { detectCaptcha, needsHumanIntervention } from '../core/captcha.js';
 import {
@@ -255,6 +256,20 @@ async function runStep(ctx: SignupContext, step: Step, index: number): Promise<v
         return;
       }
       if (classified) throw classified;
+
+      // Genel expect desenleri tek başına yanlış pozitif verdi
+      // (Awwwards: "Welcome" kayıt BAŞARISIZKEN eşleşmişti). URL
+      // değişimi BAĞIMSIZ ikinci bir sinyal — tek başına "başarılı"
+      // demek DEĞİL, yalnızca artifact/log'a düşen bir ipucu. Config
+      // yazan kişi bu sinyali görüp expect desenini ona göre ayarlar
+      // (alternative.me deseni: doğrudan /dashboard'a düşüyor, ara
+      // doğrulama sayfası yok).
+      if (urlChangedAfterSubmit(ctx.site.signupUrl, ctx.page.url())) {
+        log.info(
+          { from: ctx.site.signupUrl, to: ctx.page.url() },
+          'expect deseni tutmadı ama URL değişti — zayıf başarı sinyali, expect deseni gözden geçirilmeli',
+        );
+      }
 
       if (step.optional) return;
       throw new PermanentError('Beklenen içerik görünmedi', {
