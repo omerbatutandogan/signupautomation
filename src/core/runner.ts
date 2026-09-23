@@ -238,13 +238,29 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
     const gmailClient = await createGmailClient();
     const siteDomain = registrableDomain(ctx.site.signupUrl);
 
-    const verification = await waitForVerificationEmail(gmailClient, adapter.verification, {
-      siteDomain,
-      submittedAt,
-      log,
-      isSeen: (id) => ledger.hasSeenMessage(id),
-      onSeen: (id) => ledger.markMessageSeen(id, siteId),
-    });
+    let verification: Awaited<ReturnType<typeof waitForVerificationEmail>>;
+    try {
+      verification = await waitForVerificationEmail(gmailClient, adapter.verification, {
+        siteDomain,
+        submittedAt,
+        log,
+        isSeen: (id) => ledger.hasSeenMessage(id),
+        onSeen: (id) => ledger.markMessageSeen(id, siteId),
+      });
+    } catch (err) {
+      // Mail hiç gelmediyse ve submit sonrası URL zaten signup'tan
+      // uzaklaşmışsa (10words, alternative, ontoplist deseni — hepsi
+      // sonunda mode:'none' oldu), bunu HATA MESAJINA ekle. Kod
+      // config'i kendiliğinden DEĞİŞTİRMEZ, yalnızca öneriyi loglar —
+      // karar hâlâ insanda.
+      if (result.status === 'submitted' && result.sawUrlChangeSignal) {
+        log.warn(
+          { siteId },
+          'Mail gelmedi VE submit sonrası URL değişmişti — mode:"none" olabilir, config gözden geçirilmeli',
+        );
+      }
+      throw err;
+    }
 
     if (verification.kind === 'link') {
       log.info({ url: verification.url.slice(0, 80) }, 'Doğrulama linki açılıyor');

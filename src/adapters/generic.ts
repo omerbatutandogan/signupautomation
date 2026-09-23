@@ -421,6 +421,10 @@ export function makeGenericAdapter(cfg: SiteConfig): SiteAdapter {
       return {
         status: 'submitted',
         needsEmailVerification: cfg.verification.mode !== 'none',
+        // mode:'link'/'code' iken mail hiç gelmezse (10words, alternative,
+        // ontoplist deseni) runner bu bilgiyi kullanıp mode:'none' önerir.
+        // Kod config'i KENDİLİĞİNDEN değiştirmez, yalnızca öneriyi loglar.
+        sawUrlChangeSignal: urlChangedAfterSubmit(cfg.signupUrl, ctx.page.url()),
       };
     },
 

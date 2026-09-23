@@ -147,7 +147,18 @@ export interface SignupContext {
 }
 
 export type SignupResult =
-  | { status: 'submitted'; needsEmailVerification: boolean }
+  | {
+      status: 'submitted';
+      needsEmailVerification: boolean;
+      /**
+       * expect deseni tutmadı ama submit sonrası URL signup/register'dan
+       * uzaklaştı — zayıf başarı sinyali (bkz. urlChangedAfterSubmit).
+       * mode:'link'/'code' iken mail hiç gelmezse runner bu bilgiyi
+       * hata mesajına ekleyip mode:'none' önerebilir; kod config
+       * dosyasını KENDİLİĞİNDEN değiştirmez.
+       */
+      sawUrlChangeSignal?: boolean;
+    }
   | { status: 'already_exists' };
 
 export interface SiteAdapter {
