@@ -291,7 +291,17 @@ export async function findSignupPage(
   let sawBotWall = false;
 
   // 1. Doğrudan yollar — ucuz, çoğu sitede tutuyor.
-  for (const path of DIRECT_PATHS) {
+  //
+  // GERÇEK VAKA: crozdesk.com'da art arda 8 istek (6'sı 404) Cloudflare'ı
+  // tetikleyip 429'a çevirdi — site muhtemelen bot korumalı DEĞİL, bizim
+  // hızlı ardışık deneme desenimiz onu öyle GÖSTERDİ (test sırasında IP
+  // birkaç dakika 429'da kaldı, 300ms'lik ilk deneme yetmedi — Cloudflare
+  // eşiği düşünülenden daha sıkı). Adımlar arasına gecikme bu deseni
+  // kırıyor; site başına toplam maliyet önemsiz (8 × ~1sn ≈ 8sn) ama
+  // yanlış "bot_protected" etiketini önlüyor. Gecikme değeri IP cezası
+  // aktifken doğrulanamadı — üretimde ölçülüp ayarlanmalı.
+  for (const [i, path] of DIRECT_PATHS.entries()) {
+    if (i > 0) await page.waitForTimeout(800 + Math.random() * 400);
     const url = `${origin}${path}`;
     const result = await tryUrl(page, url, baseDomain);
     if (result === 'bot_wall') {
