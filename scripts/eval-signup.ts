@@ -27,6 +27,8 @@ import { createArtifacts } from '../src/core/artifacts.js';
 import { signupEmail, usernameForSite } from '../src/identity/email.js';
 import { derivePasswordForSite } from '../src/identity/password.js';
 import { env } from '../src/config.js';
+import { loadProfile } from '../src/identity/profile.js';
+import { DEFAULT_PRODUCT } from '../src/identity/account.js';
 import type { SignupContext, SignupProfile } from '../src/core/types.js';
 
 const logger = pino({ level: env.LOG_LEVEL });
@@ -43,11 +45,6 @@ type SiteResult =
   | { siteId: string; website: string; outcome: 'no_form' }
   | { siteId: string; website: string; outcome: 'bot_protected' }
   | { siteId: string; website: string; outcome: 'error'; message: string };
-
-async function loadProfile(): Promise<SignupProfile> {
-  const raw = await readFile('src/profile/geo-new.json', 'utf8');
-  return JSON.parse(raw) as SignupProfile;
-}
 
 async function evalSite(browser: Browser, site: EvalSite, profile: SignupProfile): Promise<SiteResult> {
   const page = await browser.newPage();
@@ -139,7 +136,7 @@ async function main(): Promise<void> {
   const comparePath = compareIdx >= 0 ? args[compareIdx + 1] : null;
 
   const evalSet = JSON.parse(await readFile('data/eval-set.json', 'utf8')) as { sites: EvalSite[] };
-  const profile = await loadProfile();
+  const profile = await loadProfile(DEFAULT_PRODUCT);
 
   const browser = await chromium.launch({
     headless: true,

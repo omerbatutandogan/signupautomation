@@ -242,3 +242,36 @@ describe('şema migrasyonu', () => {
     }).not.toThrow();
   });
 });
+
+describe('ürünler arası e-posta çakışması', () => {
+  // site_id kolonu hesap anahtarını tutuyor: varsayılan ürün için yalın
+  // siteId, diğer ürünler için `urun@site`.
+
+  it('aynı sitede aynı e-postayı kullanan başka ürün hesabını bulur', () => {
+    ledger.saveCredentials('awwwards', 'ortak@x.com', 'geonew_awwwards', 1);
+    expect(ledger.otherAccountWithEmail('awwwards', 'acme@awwwards', 'ortak@x.com')).toBe('awwwards');
+  });
+
+  it('diğer ürün önce kaydolduysa varsayılan ürün de çakışmayı görür', () => {
+    ledger.saveCredentials('acme@awwwards', 'ortak@x.com', 'acme_awwwards', 1);
+    expect(ledger.otherAccountWithEmail('awwwards', 'awwwards', 'ortak@x.com')).toBe('acme@awwwards');
+  });
+
+  it('farklı e-postada çakışma yok', () => {
+    ledger.saveCredentials('awwwards', 'ortak@x.com', 'geonew_awwwards', 1);
+    expect(ledger.otherAccountWithEmail('awwwards', 'acme@awwwards', 'acme@x.com')).toBeNull();
+  });
+
+  it('kendi hesabını çakışma saymaz', () => {
+    ledger.saveCredentials('acme@awwwards', 'ortak@x.com', 'acme_awwwards', 1);
+    expect(ledger.otherAccountWithEmail('awwwards', 'acme@awwwards', 'ortak@x.com')).toBeNull();
+  });
+
+  it('başka sitedeki aynı e-posta çakışma değildir', () => {
+    // "betalist" anahtarı "awwwards" sitesine ait değil; LIKE '%@awwwards'
+    // yalnızca @awwwards ile BİTEN anahtarları eşlemeli.
+    ledger.saveCredentials('betalist', 'ortak@x.com', 'geonew_betalist', 1);
+    ledger.saveCredentials('acme@betalist', 'ortak@x.com', 'acme_betalist', 1);
+    expect(ledger.otherAccountWithEmail('awwwards', 'awwwards', 'ortak@x.com')).toBeNull();
+  });
+});

@@ -18,6 +18,9 @@ import { findSignupPage } from './discovery/find-signup.js';
 import { analyzeForm } from './discovery/analyze-form.js';
 import { generateConfig } from './discovery/generate-config.js';
 import { makeGenericAdapter } from './adapters/generic.js';
+import { parseArgs } from './cli-args.js';
+import { accountKey, assertProductId, DEFAULT_PRODUCT } from './identity/account.js';
+import { listProducts, loadProfile } from './identity/profile.js';
 import { mkdir, writeFile } from 'node:fs/promises';
 
 const logger = pino({
@@ -35,12 +38,16 @@ const logger = pino({
 
 function usage(): void {
   console.log(`
-Kullanım: npm run cli -- <komut> [argümanlar]
+Kullanım: npm run cli -- <komut> [argümanlar] [--product <ürünId>]
+
+--product: hangi ürün adına işlem yapılacağı (src/profile/<ürünId>.json).
+           Verilmezse varsayılan ürün. run-one, signup, password, unlock kabul eder.
 
 Komutlar:
   run-one <siteId>        Tek siteyi uçtan uca işle
     --dry-run             Selector'ları doğrula, submit etme
     --force               Terminal durumu aşıp tekrar dene
+  products                Ürün profillerini doğrulayıp listele
   signup <website>        Config dosyası OLMADAN kayıt dener
     (varsayılan --dry-run; --live ile gerçek kayıt)
     --live                Gerçek kayıt yap (varsayılan dry-run)
@@ -80,7 +87,7 @@ async function markVerified(siteId: string): Promise<void> {
   }
 }
 
-async function cmdRunOne(siteId: string, flags: Set<string>): Promise<number> {
+async function cmdRunOne(siteId: string, flags: Set<string>, productId: string): Promise<number> {
   const ledger = new Ledger();
   try {
     const outcome = await runSite(siteId, {
@@ -88,12 +95,13 @@ async function cmdRunOne(siteId: string, flags: Set<string>): Promise<number> {
       ledger,
       dryRun: flags.has('--dry-run'),
       force: flags.has('--force'),
+      productId,
     });
 
     const icon =
       outcome.status === 'completed' ? '✅' : outcome.status.startsWith('skipped') ? '⏭️' : '❌';
 
-    console.log(`\n${icon} ${siteId}: ${outcome.status}`);
+    console.log(`\n${icon} ${accountKey(productId, siteId)}: ${outcome.status}`);
     if (outcome.note) console.log(`   ${outcome.note}`);
     if (outcome.artifactsDir) console.log(`   artifacts: ${outcome.artifactsDir}`);
 
@@ -123,7 +131,7 @@ async function cmdRunOne(siteId: string, flags: Set<string>): Promise<number> {
  * sistemin dürüst sınırı: kural tükendiğinde sessizce yanlış davranmak
  * yerine açıkça durmak.
  */
-async function cmdSignup(website: string, flags: Set<string>): Promise<number> {
+async function cmdSignup(website: string, flags: Set<string>, productId: string): Promise<number> {
   const siteId = siteIdFromWebsite(website);
   if (!siteId) {
     console.error(`Geçersiz URL, siteId türetilemedi: ${website}`);
@@ -200,6 +208,7 @@ async function cmdSignup(website: string, flags: Set<string>): Promise<number> {
       force: true, // geçici çalıştırma, terminal durum kontrolü anlamsız
       adapter,
       siteConfig,
+      productId,
     });
 
     const icon =
@@ -278,10 +287,37 @@ function cmdUnlock(siteId: string): number {
   }
 }
 
-async function cmdPassword(siteId: string): Promise<number> {
+/**
+ * Ürün profillerini doğrulayarak listeler. Emre'den gelen ürün bilgileri
+ * profile dönüştürülünce eksik/hatalı alan burada görünür — kayıt
+ * sırasında 200 siteye yayılmadan önce.
+ */
+async function cmdProducts(): Promise<number> {
+  const ids = await listProducts();
+  if (ids.length === 0) {
+    console.log('src/profile/ altında ürün profili yok.');
+    return 1;
+  }
+  let bad = 0;
+  console.log('\nÜrünler:\n');
+  for (const id of ids) {
+    try {
+      const p = await loadProfile(id);
+      const mark = id === DEFAULT_PRODUCT ? ' (varsayılan)' : '';
+      console.log(`  ✅ ${id.padEnd(20)} ${p.companyName.padEnd(20)} ${p.signupEmail ?? `${env.SIGNUP_EMAIL} (ortak)`}${mark}`);
+    } catch (err) {
+      bad++;
+      console.log(`  ❌ ${id.padEnd(20)} ${(err as Error).message}`);
+    }
+  }
+  return bad > 0 ? 1 : 0;
+}
+
+async function cmdPassword(siteId: string, productId: string): Promise<number> {
   const cfg = await loadSiteConfig(siteId).catch(() => null);
+  // runner ile AYNI türetme: hesap anahtarı + site politikası.
   const pw = derivePasswordForSite(env.MASTER_SECRET, {
-    id: siteId,
+    id: accountKey(productId, siteId),
     passwordPolicy: cfg?.passwordPolicy,
   });
   // Yalnızca stdout — loglara girmiyor.
@@ -478,10 +514,9 @@ async function cmdCheckGmail(): Promise<number> {
 }
 
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  const command = args[0];
-  const positional = args.slice(1).filter((a) => !a.startsWith('--'));
-  const flags = new Set(args.filter((a) => a.startsWith('--')));
+  const { command, positional, flags, options } = parseArgs(process.argv.slice(2));
+  const productId = options.get('--product') ?? DEFAULT_PRODUCT;
+  assertProductId(productId);
 
   let code = 0;
 
@@ -493,7 +528,7 @@ async function main(): Promise<void> {
         code = 1;
         break;
       }
-      code = await cmdRunOne(siteId, flags);
+      code = await cmdRunOne(siteId, flags, productId);
       break;
     }
     case 'signup': {
@@ -503,9 +538,12 @@ async function main(): Promise<void> {
         code = 1;
         break;
       }
-      code = await cmdSignup(website, flags);
+      code = await cmdSignup(website, flags, productId);
       break;
     }
+    case 'products':
+      code = await cmdProducts();
+      break;
     case 'status':
       code = cmdStatus();
       break;
@@ -519,7 +557,7 @@ async function main(): Promise<void> {
         code = 1;
         break;
       }
-      code = cmdUnlock(siteId);
+      code = cmdUnlock(accountKey(productId, siteId));
       break;
     }
     case 'password': {
@@ -529,7 +567,7 @@ async function main(): Promise<void> {
         code = 1;
         break;
       }
-      code = await cmdPassword(siteId);
+      code = await cmdPassword(siteId, productId);
       break;
     }
     case 'check-gmail':
@@ -539,6 +577,17 @@ async function main(): Promise<void> {
       code = await cmdSheet(flags);
       break;
     case 'run-batch':
+      // Sheet satırları site başına, ürün başına değil: başka bir ürünün
+      // sonucu varsayılan ürünün satırının üzerine yazılırdı. Sheet ürün
+      // bazlı olana kadar toplu çalıştırma yalnızca varsayılan ürün için.
+      if (productId !== DEFAULT_PRODUCT) {
+        console.error(
+          `run-batch şimdilik yalnızca varsayılan ürün (${DEFAULT_PRODUCT}) için — Sheet kolonları ürün bazlı değil.`,
+        );
+        console.error(`Tek site için: run-one <siteId> --product ${productId}`);
+        code = 1;
+        break;
+      }
       code = await cmdRunBatch(flags, positional);
       break;
     default:

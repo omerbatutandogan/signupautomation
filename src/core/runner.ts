@@ -7,7 +7,6 @@
  * (45 dk) işlenemez yapar.
  */
 
-import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import type { Logger } from 'pino';
 import { env } from '../config.js';
@@ -19,6 +18,8 @@ import { waitForCaptchaCleared } from './captcha.js';
 import { canAutoVerify, checkDryRunPage } from './dry-run-check.js';
 import { derivePasswordForSite } from '../identity/password.js';
 import { signupEmail, usernameForSite } from '../identity/email.js';
+import { accountKey, DEFAULT_PRODUCT } from '../identity/account.js';
+import { loadProfile } from '../identity/profile.js';
 import { Ledger } from '../integrations/ledger.js';
 import { createGmailClient, waitForVerificationEmail } from '../integrations/gmail.js';
 import { registrableDomain } from '../integrations/mail-parse.js';
@@ -51,6 +52,12 @@ export interface RunOptions {
   adapter?: SiteAdapter;
   /** adapter verildiğinde ctx.site için kullanılacak gerçek config. */
   siteConfig?: SiteConfig;
+  /**
+   * Hangi ürün adına kaydolunacağı (src/profile/<id>.json). Verilmezse
+   * varsayılan ürün. Kilit, kayıt, kimlik ve tarayıcı profili hesap
+   * anahtarıyla (ürün + site) tutulur — bkz. identity/account.ts.
+   */
+  productId?: string;
   /**
    * Sheet geri bildirimi — opsiyonel. Verilmezse runner Sheet'siz çalışır.
    * Hataları çağıran taraf yutar; Sheet otorite değil, görünürlük katmanı.
@@ -86,17 +93,14 @@ export function alreadyExistsOutcome(): RunOutcome {
   return { status: 'completed', note: 'Hesap zaten mevcut (daha önce açılmış)' };
 }
 
-async function loadProfile(): Promise<SignupProfile> {
-  const raw = await readFile('src/profile/geo-new.json', 'utf8');
-  return JSON.parse(raw) as SignupProfile;
-}
-
 export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutcome> {
   const runId = opts.runId ?? randomUUID().slice(0, 8);
-  const log = opts.log.child({ siteId, runId });
+  const productId = opts.productId ?? DEFAULT_PRODUCT;
+  const log = opts.log.child({ siteId, productId, runId });
   const { ledger } = opts;
 
   const adapter = opts.adapter ?? (await loadAdapter(siteId));
+  const key = accountKey(productId, siteId);
 
   /**
    * Erken çıkışlarda da Sheet'e yazar. Aksi halde atlanan siteler Sheet'te
@@ -117,11 +121,34 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
     return exitEarly({ status: 'skipped_high_risk', note: 'ToS otomatik kaydı yasaklıyor' });
   }
 
+  // Profil ağdan ÖNCE yükleniyor: geçersiz profil (eksik açıklama, hatalı
+  // e-posta) hiçbir siteye dokunmadan burada durmalı.
+  let profile: SignupProfile;
+  try {
+    profile = await loadProfile(productId);
+  } catch (err) {
+    log.error({ err: (err as Error).message }, 'Ürün profili yüklenemedi');
+    return exitEarly({ status: 'failed', note: (err as Error).message });
+  }
+  const email = signupEmail(profile.signupEmail ?? env.SIGNUP_EMAIL);
+
   // 2. Terminal sonuç kontrolü — daha önce bitmişse tekrar deneme.
-  const previous = ledger.terminalResult(siteId);
+  const previous = ledger.terminalResult(key);
   if (previous && !opts.force) {
-    log.info({ previous }, 'Site zaten terminal durumda (--force ile aşılabilir)');
+    log.info({ previous }, 'Hesap zaten terminal durumda (--force ile aşılabilir)');
     return exitEarly({ status: 'skipped_terminal', note: `önceki sonuç: ${previous.status}` });
+  }
+
+  // Aynı sitede aynı e-postayla başka ürün hesabı varsa DENEME: site
+  // "zaten kayıtlı" der, runner bunu başarı sayar ve bu ürün, öteki
+  // ürünün hesabıyla yanlışlıkla "tamamlandı" işaretlenir.
+  const clash = ledger.otherAccountWithEmail(siteId, key, email);
+  if (clash) {
+    log.warn({ clash, email }, 'Aynı e-posta bu sitede başka ürün hesabında kullanılıyor');
+    return exitEarly({
+      status: 'manual',
+      note: `bu sitede "${clash}" hesabı aynı e-postayı kullanıyor — ürün profiline ayrı signupEmail tanımla`,
+    });
   }
 
   // 3. Günlük limit — insan-benzeri KAYIT hacmi.
@@ -138,14 +165,14 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
     }
   }
 
-  // 4. Kilit — atomik, aynı siteyi iki kez işlemeyi engeller.
-  if (!ledger.tryClaim(siteId, runId)) {
-    const lock = ledger.activeLock(siteId);
-    log.warn({ lock }, 'Site başka bir çalıştırma tarafından kilitli');
+  // 4. Kilit — atomik, aynı hesabı iki kez işlemeyi engeller.
+  if (!ledger.tryClaim(key, runId)) {
+    const lock = ledger.activeLock(key);
+    log.warn({ lock }, 'Hesap başka bir çalıştırma tarafından kilitli');
     return exitEarly({ status: 'skipped_locked', note: `kilit sahibi: ${lock?.run_id ?? '?'}` });
   }
 
-  const attemptId = ledger.startAttempt(siteId, runId, opts.dryRun);
+  const attemptId = ledger.startAttempt(key, runId, opts.dryRun);
   let outcome: RunOutcome = { status: 'error' };
   let browser: Awaited<ReturnType<typeof launchContext>> | null = null;
   // Sheet'e yazmak için finally'de gerekiyor; try içinde tanımlanınca erişilemez.
@@ -160,28 +187,34 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
   }
 
   try {
-    const profile = await loadProfile();
+    const siteConfig = opts.siteConfig ?? (await loadSiteConfigFor(adapter));
     const identity = {
-      email: signupEmail(env.SIGNUP_EMAIL),
+      email,
       username: usernameForSite(profile.companyName.replace(/\W/g, ''), siteId),
+      // Şifre HESAP anahtarından türetiliyor: varsayılan üründe anahtar =
+      // siteId (mevcut hesapların şifresi değişmez), diğer ürünlerde
+      // `urun@site`. Site politikası da uygulanıyor — `cli password` ile
+      // aynı sonucu vermesi için (önceden burada yok sayılıyordu).
       password: derivePasswordForSite(env.MASTER_SECRET, {
-        id: siteId,
-        passwordPolicy: undefined,
+        id: key,
+        passwordPolicy: siteConfig.passwordPolicy,
       }),
       passwordVersion: 1,
     };
 
     // Submit'ten ÖNCE kaydet: çökme halinde hangi kimlikle denendiği kaybolmasın.
-    ledger.saveCredentials(siteId, identity.email, identity.username, identity.passwordVersion);
+    ledger.saveCredentials(key, identity.email, identity.username, identity.passwordVersion);
     identitySnapshot = { email: identity.email, username: identity.username };
 
-    browser = await launchContext(siteId);
-    const artifacts = createArtifacts(browser.page, runId, siteId);
+    // Tarayıcı profili de hesap başına: aynı sitede A ürününün oturum
+    // çerezleri B ürününün kaydına karışmasın.
+    browser = await launchContext(key);
+    const artifacts = createArtifacts(browser.page, runId, key);
     outcome.artifactsDir = artifacts.dir;
 
     const ctx: SignupContext = {
       page: browser.page,
-      site: opts.siteConfig ?? (await loadSiteConfigFor(adapter)),
+      site: siteConfig,
       identity,
       profile,
       log,
@@ -261,7 +294,7 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
         submittedAt,
         log,
         isSeen: (id) => ledger.hasSeenMessage(id),
-        onSeen: (id) => ledger.markMessageSeen(id, siteId),
+        onSeen: (id) => ledger.markMessageSeen(id, key),
       });
     } catch (err) {
       // Mail hiç gelmediyse ve submit sonrası URL zaten signup'tan
@@ -293,7 +326,7 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
 
     const ok = (await adapter.confirmSuccess?.(ctx)) ?? true;
     if (ok) {
-      ledger.setProfileUrl(siteId, browser.page.url());
+      ledger.setProfileUrl(key, browser.page.url());
       if (identitySnapshot) identitySnapshot.profileUrl = browser.page.url();
       outcome = { status: 'completed', artifactsDir: artifacts.dir };
     } else {
@@ -311,7 +344,7 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
     log.error({ err: message, kind }, 'Çalıştırma başarısız');
 
     if (browser) {
-      const artifacts = createArtifacts(browser.page, runId, siteId);
+      const artifacts = createArtifacts(browser.page, runId, key);
       await captureFailure(artifacts, `failure-${kind}`);
       outcome.artifactsDir = artifacts.dir;
     }
@@ -330,7 +363,7 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
   } finally {
     ledger.finishAttempt(attemptId, outcome.status, outcome.note);
     // Kilit HER koşulda bırakılır — bırakılmazsa site TTL boyunca bloke olur.
-    ledger.release(siteId);
+    ledger.release(key);
     await browser?.close();
 
     // Sheet'e sonucu yaz. Hata yutulur: ledger zaten doğru kaydı tuttu,

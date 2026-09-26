@@ -264,6 +264,26 @@ export class Ledger {
     return row ?? null;
   }
 
+  /**
+   * Aynı sitede, aynı e-postayla açılmış BAŞKA bir ürün hesabı var mı?
+   *
+   * site_id kolonu hesap anahtarını tutuyor (identity/account.ts):
+   * varsayılan ürün için yalın siteId, diğerleri için `urun@site`.
+   * Aynı e-postayla ikinci ürün kaydı denenirse site "zaten kayıtlı" der
+   * ve runner bunu başarı sayar — B ürünü, A'nın hesabıyla yanlışlıkla
+   * "tamamlandı" işaretlenirdi. Varsa o hesabın anahtarını döndürür.
+   */
+  otherAccountWithEmail(siteId: string, ownKey: string, email: string): string | null {
+    const row = this.db
+      .prepare(
+        `SELECT site_id FROM credentials
+         WHERE email = ? AND site_id != ? AND (site_id = ? OR site_id LIKE ?)
+         LIMIT 1`,
+      )
+      .get(email, ownKey, siteId, `%@${siteId}`) as { site_id: string } | undefined;
+    return row?.site_id ?? null;
+  }
+
   // ── Görülen mailler ─────────────────────────────────────────────────────
 
   /** Yeniden çalıştırma bayat bir doğrulama mailini tüketmesin. */

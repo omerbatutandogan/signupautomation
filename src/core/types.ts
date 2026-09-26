@@ -65,6 +65,15 @@ export interface SignupProfile {
   socials: Partial<Record<'twitter' | 'linkedin' | 'github', string>>;
   pricing: string;
   foundedYear: number;
+  /**
+   * Bu ürünün kayıt e-postası. Yoksa .env'deki SIGNUP_EMAIL kullanılır.
+   *
+   * Aynı sitede iki ürün aynı e-postayla hesap açamaz — site ikincisine
+   * "zaten kayıtlı" der. Birden çok ürün aynı siteye kaydolacaksa her
+   * ürüne ayrı adres gerekir. Doğrulama maili yalnızca bağlı Gmail
+   * kutusuna düşen adreslerde okunabilir.
+   */
+  signupEmail?: string;
 }
 
 /** Form alanlarının semantik adları — JSON config'de literal selector değil bunlar yazılır. */
