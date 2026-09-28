@@ -86,10 +86,41 @@ export async function checkDryRunPage(page: Page, cfg: SiteConfig): Promise<DryR
   // bakıyor. Config bir alanı hiç bilmiyorsa (fill adımı eksik) o kontrol
   // sessiz kalır — kasıtlı bozuk bir configle denendi ve yakalanmadı.
   // Bu yüzden formun kendi zorunlu alanlarını ayrıca denetliyoruz.
+  //
+  // KAPSAM: yalnızca doldurulan alanların içinde bulunduğu form(lar).
+  // Bütün sayfayı taramak, aynı sayfadaki GİRİŞ ve ŞİFRE SIFIRLAMA
+  // formlarının boş zorunlu alanlarını da kayıt formununmuş gibi
+  // raporluyordu (ontoplist: loginemail, retrieve-pass-email). Gizliyken
+  // yalnızca gürültüydü; görünür bir giriş formu olsaydı "kritik alan boş"
+  // sayılıp doğru bir config yanlışlıkla manual'a düşerdi. Doldurulan
+  // alanlar hiçbir <form> içinde değilse (bazı React sayfaları) eskisi
+  // gibi bütün sayfa taranır.
+  const filledSelectors = cfg.steps
+    .filter((s) => (s.type === 'fill' || s.type === 'select' || s.type === 'check') && s.selector)
+    .map((s) => s.selector!);
+
   const pageRequired = await page
-    .evaluate(() => {
+    .evaluate((selectors: string[]) => {
+      const forms = new Set<Element>();
+      for (const sel of selectors) {
+        let el: Element | null = null;
+        try {
+          el = document.querySelector(sel);
+        } catch {
+          // Playwright'a özgü selector (text=, :has-text) CSS değil — atla.
+        }
+        const form = el?.closest('form');
+        if (form) forms.add(form);
+      }
+
+      const scope: Element[] = forms.size > 0 ? Array.from(forms) : [document.documentElement];
+      const candidates: Element[] = [];
+      for (const root of scope) {
+        candidates.push(...Array.from(root.querySelectorAll('input, select, textarea')));
+      }
+
       const empty: Array<{ name: string; type: string; visible: boolean }> = [];
-      for (const el of Array.from(document.querySelectorAll('input, select, textarea'))) {
+      for (const el of candidates) {
         const e = el as HTMLInputElement;
         if (e.type === 'hidden' || e.type === 'submit' || e.type === 'button') continue;
         if (!e.required) continue;
@@ -106,7 +137,7 @@ export async function checkDryRunPage(page: Page, cfg: SiteConfig): Promise<DryR
         });
       }
       return empty;
-    })
+    }, filledSelectors)
     .catch(() => [] as Array<{ name: string; type: string; visible: boolean }>);
 
   for (const f of pageRequired) {
