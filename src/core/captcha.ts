@@ -75,6 +75,33 @@ export function attachCaptchaSniffer(context: BrowserContext): CaptchaNetworkSta
 }
 
 /** Sayfada herhangi bir captcha var mı? Tür döner, escalation kararı vermez. */
+/**
+ * Captcha'yı KISA SÜRE bekleyerek arar.
+ *
+ * detectCaptcha anlık bakıyor. Turnstile gibi widget'lar sayfa açıldıktan
+ * saniyeler sonra yükleniyor; o anda yoksa captchaGate sessizce geçiyor
+ * ve form token'sız gönderiliyordu. Gerçek vaka (BetaList, 2026-09-28):
+ * captchaGate alanlardan önceye alınınca Turnstile henüz yüklenmemişti,
+ * log'da tek captcha satırı yoktu, sunucu token'sız formu reddedip
+ * yeniden çizdi (şifre alanları boş döndü — daha önce "Turnstile
+ * alanları sıfırlıyor" diye YANLIŞ teşhis edilmişti).
+ *
+ * Captcha'sız sitelerde maliyet: timeoutMs kadar ek bekleme.
+ */
+export async function waitForCaptcha(
+  page: Page,
+  timeoutMs = 4000,
+  intervalMs = 500,
+): Promise<CaptchaKind | null> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const kind = await detectCaptcha(page);
+    if (kind) return kind;
+    if (Date.now() >= deadline) return null;
+    await page.waitForTimeout(intervalMs);
+  }
+}
+
 export async function detectCaptcha(
   page: Page,
   network?: CaptchaNetworkState,

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
 import { parseSiteConfig } from '../src/adapters/schema.js';
 import { canAutoVerify, checkDryRunPage } from '../src/core/dry-run-check.js';
+import type { SiteConfig } from '../src/core/types.js';
 
 /**
  * Dry-run kontrolünün KAPSAMI — gerçek tarayıcıda.
@@ -24,7 +25,9 @@ afterAll(async () => {
   await browser?.close();
 });
 
-function config(fillSelectors: string[]) {
+function config(fillSelectors: string[]): SiteConfig {
+  // generate-config.ts ile aynı dönüşüm: şema tipi emailLocalPart'ı
+  // opsiyonel tutuyor, SiteConfig zorunlu.
   return parseSiteConfig(
     {
       id: 'fixture',
@@ -39,7 +42,7 @@ function config(fillSelectors: string[]) {
       verification: { mode: 'none' },
     },
     'test',
-  );
+  ) as SiteConfig;
 }
 
 describe('checkDryRunPage — form kapsamı', () => {

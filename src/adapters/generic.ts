@@ -13,7 +13,7 @@ import {
   TransientError,
   urlChangedAfterSubmit,
 } from '../core/errors.js';
-import { detectCaptcha, needsHumanIntervention } from '../core/captcha.js';
+import { needsHumanIntervention, waitForCaptcha } from '../core/captcha.js';
 import {
   moveMouseTo,
   pickDescription,
@@ -279,8 +279,14 @@ async function runStep(ctx: SignupContext, step: Step, index: number): Promise<v
     }
 
     case 'captchaGate': {
-      const kind = await detectCaptcha(ctx.page);
-      if (!kind) return;
+      // Geç yüklenen widget'ları (Turnstile) kaçırmamak için kısa bekleme.
+      const kind = await waitForCaptcha(ctx.page);
+      if (!kind) {
+        // Sessiz geçiş teşhisi zorlaştırıyordu: BetaList'te captcha adımı
+        // hiçbir iz bırakmadan atlanmış, form token'sız gönderilmişti.
+        log.info('Captcha görülmedi');
+        return;
+      }
 
       // v3/managed Turnstile sessizce skorlar — insan çağırmak gereksiz.
       if (!(await needsHumanIntervention(ctx.page, kind))) {
