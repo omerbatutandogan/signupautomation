@@ -16,14 +16,17 @@ import { chromium, type Browser, type Page } from 'playwright';
 import pino from 'pino';
 import { env } from '../src/config.js';
 import { SheetClient, type SheetRow } from '../src/integrations/sheet.js';
-import { findSignupPage } from '../src/discovery/find-signup.js';
+import { findSignupPage, type SignupHint } from '../src/discovery/find-signup.js';
 import { analyzeForm } from '../src/discovery/analyze-form.js';
 import { generateConfig, riskFor } from '../src/discovery/generate-config.js';
 import { listSiteIds } from '../src/adapters/registry.js';
 import {
   BOT_REASON,
+  HINT_REASON,
   RETRYABLE,
+  SiteTimeoutError,
   shouldEnqueue,
+  withSiteTimeout,
   type Outcome as QueueOutcome,
 } from './discover-queue.js';
 
@@ -98,6 +101,13 @@ async function discoverSite(
     return { outcome: 'high_risk', reason: 'ToS otomatik kaydı yasaklıyor' };
   }
 
+  const hints = new Set<SignupHint>();
+  const noFormResult = (): SiteResult => {
+    if (hints.has('email_first')) return { outcome: 'email_first', reason: HINT_REASON.email_first };
+    if (hints.has('submit_form')) return { outcome: 'submit_form', reason: HINT_REASON.submit_form };
+    return { outcome: 'no_form', reason: 'Kayıt formu bulunamadı (headless+headed denendi)' };
+  };
+
   const attempt = async (page: Page): Promise<SiteResult | null> => {
     const search = await findSignupPage(page, row.website);
 
@@ -105,7 +115,15 @@ async function discoverSite(
     // burada SONUÇ döndürülmüyor — çağıran katman headed denemesini de
     // yaptıktan sonra karar veriyor.
     if (search.kind === 'bot_protected') return { outcome: 'bot_protected', reason: BOT_REASON };
-    if (search.kind === 'not_found') return null;
+    // Sebepli "yok" (park edilmiş domain, platforma yönlenme) kesin sonuç:
+    // headed denemesi bunu değiştirmez, sebebiyle kaydedilir.
+    if (search.kind === 'not_found') {
+      if (search.reason) return { outcome: 'no_form', reason: search.reason };
+      // İpuçları biriktirilir: headed kayıt formunu bulabilir, bulamazsa
+      // sonuç "form yok" yerine görülen akış olur.
+      for (const h of search.hints ?? []) hints.add(h);
+      return null;
+    }
 
     const candidate = search.candidate;
     const analysis = await analyzeForm(page);
@@ -143,10 +161,13 @@ async function discoverSite(
   if (!opts.forceHeaded) {
     const page = await browser.newPage();
     try {
-      const result = await attempt(page);
+      const result = await withSiteTimeout(attempt(page), () => page.close());
       if (result?.outcome === 'bot_protected') botWalled = true;
       else if (result) return result;
     } catch (err) {
+      // Zaman aşımında headed'a geçme: aynı site ikinci kez dakikalarca
+      // bekletir. Hata olarak kaydedilir, --retry-failed yeniden dener.
+      if (err instanceof SiteTimeoutError) return { outcome: 'error', reason: err.message };
       logger.debug({ err: (err as Error).message }, 'headless deneme hatası');
     } finally {
       await page.close().catch(() => undefined);
@@ -157,7 +178,7 @@ async function discoverSite(
   const headed = await opts.headedBrowser();
   const page = await headed.newPage();
   try {
-    const result = await attempt(page);
+    const result = await withSiteTimeout(attempt(page), () => page.close());
     if (result?.outcome === 'bot_protected') {
       return { outcome: 'bot_protected', reason: BOT_REASON };
     }
@@ -165,8 +186,9 @@ async function discoverSite(
     // Headed form bulamadı: headless'ta duvar gördüysek sebep "form yok"
     // değil, duvarın arkasını göremememiz.
     if (botWalled) return { outcome: 'bot_protected', reason: BOT_REASON };
-    return { outcome: 'no_form', reason: 'Kayıt formu bulunamadı (headless+headed denendi)' };
+    return noFormResult();
   } catch (err) {
+    if (err instanceof SiteTimeoutError) return { outcome: 'error', reason: err.message };
     if (botWalled) return { outcome: 'bot_protected', reason: BOT_REASON };
     return { outcome: 'error', reason: (err as Error).message.slice(0, 150) };
   } finally {
@@ -239,6 +261,8 @@ async function main(): Promise<void> {
     high_risk: 0,
     bot_protected: 0,
     no_form: 0,
+    submit_form: 0,
+    email_first: 0,
     error: 0,
     skipped_existing: 0,
   };
@@ -286,6 +310,8 @@ async function main(): Promise<void> {
   console.log(`   ⛔ Yüksek risk:      ${tally.high_risk}`);
   console.log(`   🛡️  Bot koruması:     ${tally.bot_protected}`);
   console.log(`   ❌ Form bulunamadı:  ${tally.no_form}`);
+  console.log(`   📨 Gönderim formu:   ${tally.submit_form}  (hesapsız "sitenizi gönderin")`);
+  console.log(`   ✉️  E-postayla giriş: ${tally.email_first}  (kod/link — henüz desteklenmiyor)`);
   console.log(`   ⚠️  Hata:             ${tally.error}`);
   if (tally.bot_protected > 0) {
     console.log(`\nBot korumalı siteler otomasyona uygun değil — elle açılmalı.`);

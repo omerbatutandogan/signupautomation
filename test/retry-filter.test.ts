@@ -16,6 +16,11 @@ describe('RETRYABLE kümesi', () => {
     expect(RETRYABLE.has('error')).toBe(true);
   });
 
+  it('henüz desteklenmeyen akışları içerir — destek gelince yeniden taranır', () => {
+    expect(RETRYABLE.has('submit_form')).toBe(true);
+    expect(RETRYABLE.has('email_first')).toBe(true);
+  });
+
   it('doğrulanmış işi ASLA içermez', () => {
     // generated: config üretildi, muhtemelen elle düzeltildi.
     expect(RETRYABLE.has('generated')).toBe(false);

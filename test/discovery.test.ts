@@ -484,6 +484,48 @@ describe('generateConfig', () => {
     expect(config.steps.length).toBeGreaterThan(3);
   });
 
+  it('kayıt sayfası yüksek riskli domaindeyse risk HIGH — site adresi masum olsa bile', () => {
+    // Keşif taşınmış siteleri takip ediyor: sıradan bir dizin G2'ye
+    // yönlenirse risk yalnızca sheet'teki adrese bakılarak "low" çıkardı
+    // ve ToS kapısı G2 kaydını durdurmazdı.
+    const { config } = generateConfig({
+      id: 'old-dir',
+      name: 'Old Dir',
+      website: 'old-dir.com',
+      candidate: { ...candidate, url: 'https://www.g2.com/users/sign_up', movedFrom: 'old-dir.com' },
+      analysis: analysis(),
+    });
+
+    expect(config.risk).toBe('high');
+  });
+
+  it('taşınmış sitenin taslağına domain değişimini yazar', () => {
+    const { warnings, config } = generateConfig({
+      id: 'angel',
+      name: 'Angel',
+      website: 'angel.co',
+      candidate: { ...candidate, url: 'https://wellfound.com/jobs/signup', movedFrom: 'angel.co' },
+      analysis: analysis(),
+    });
+
+    expect(warnings.join(' ')).toMatch(/angel\.co → wellfound\.com/);
+    expect(config.notes).toMatch(/angel\.co → wellfound\.com/);
+  });
+
+  it('taşınmış sitenin taslağı başarılı dry-run SONRASI da doğrulanmamış kalır', () => {
+    // Taşınma sanılan yer ölü bir domainin satış pazarı olabilir; dry-run
+    // oradaki formu da "çalışıyor" bulur. Onayı yalnızca insan verebilir.
+    const { config } = generateConfig({
+      id: 'angel',
+      name: 'Angel',
+      website: 'angel.co',
+      candidate: { ...candidate, url: 'https://wellfound.com/jobs/signup', movedFrom: 'angel.co' },
+      analysis: analysis(),
+    });
+
+    expect(isUnverified({ notes: clearUnverifiedMarker(config.notes) })).toBe(true);
+  });
+
   it('DOĞRULANMADI damgası taşır — run-batch bunu atlar', () => {
     const { config } = generateConfig({
       id: 'example',

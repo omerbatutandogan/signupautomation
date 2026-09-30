@@ -8,6 +8,7 @@
  */
 
 import type { Page, Response } from 'playwright';
+import { waitForCaptcha } from '../core/captcha.js';
 
 /** Tahmin edilebilir kayıt yolları — ucuz olduğu için önce denenir. */
 const DIRECT_PATHS = [
@@ -65,6 +66,128 @@ export function isBotWall(status: number, bodyText: string): boolean {
   return BOT_WALL_TEXT.some((re) => re.test(bodyText));
 }
 
+/**
+ * Domain satış/park platformları. Oraya yönlenen site kapanmış demek.
+ * forsale.godaddy.com gerçek vaka (prefundia.com, JS yönlendirmesi);
+ * diğerleri bilinen satış pazarları.
+ */
+const PARKING_HOSTS = ['forsale.godaddy.com', 'afternic.com', 'sedo.com', 'dan.com', 'hugedomains.com'];
+
+/** Park sayfası metinleri — yalnızca kısa sayfalarda aranır. */
+const PARKED_TEXT = [
+  /is parked free, courtesy of godaddy/i, // codeproject.com/lander
+  /this domain (name )?(is|may be) for sale/i,
+  /buy this domain/i,
+];
+
+/**
+ * Sayfa park edilmiş/satılık domain mi?
+ *
+ * Karar önce alan adından: prefundia.com'un yönlendiği GoDaddy satış
+ * sayfası headless'ta Akamai reddi ("Access Denied") gösteriyor, metin
+ * işe yaramıyor. Metin eşleşmesi kısa sayfayla sınırlı: park sayfaları
+ * birkaç yüz karakter, uzun bir dizin sayfasında "buy this domain"
+ * geçen bir ilan olabilir.
+ */
+export function isParkedDomain(url: string, bodyText: string): boolean {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (PARKING_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) return true;
+  return bodyText.length < 3000 && PARKED_TEXT.some((re) => re.test(bodyText));
+}
+
+/**
+ * Büyük platformlar. Dizin kapanıp Medium/Facebook sayfasına yönlenirse
+ * bu "taşınma" değil: orada bulunacak kayıt formu platformun kendisine
+ * ait, hedef sitenin değil.
+ */
+const PLATFORM_HOSTS = [
+  'medium.com', 'facebook.com', 'linkedin.com', 'twitter.com', 'x.com', 'instagram.com',
+  'linktr.ee', 'substack.com', 'wordpress.com', 'blogspot.com', 'github.com',
+  'google.com', 'youtube.com', 'tumblr.com', 'wix.com',
+];
+
+export const PARKED_REASON = 'Domain park edilmiş/satılık — site kapanmış';
+export const PLATFORM_REASON = 'Site büyük bir platforma yönleniyor — dizin kapanmış olabilir';
+
+export type Landing =
+  | { kind: 'same' }
+  | { kind: 'moved'; origin: string }
+  | { kind: 'gone'; reason: string };
+
+/**
+ * Açılan sayfa aradığımız site mi?
+ *
+ * Keşif eskiden sheet'teki domainde kalıyordu: angel.co wellfound.com'a
+ * taşınmıştı ve kayıt linkleri "siteden dışarı çıkma" filtresine
+ * takılıyordu. Taşınmayı takip etmek gerekiyor ama park/satış sayfaları
+ * ve büyük platformlar taşınma değil — oradaki kayıt yanlış siteye olur.
+ */
+export function resolveLanding(url: string, bodyText: string, origin: string): Landing {
+  if (!/^https?:\/\//i.test(url)) return { kind: 'same' };
+  if (isParkedDomain(url, bodyText)) return { kind: 'gone', reason: PARKED_REASON };
+  if (sameSite(url, registrableHost(origin))) return { kind: 'same' };
+  if (PLATFORM_HOSTS.includes(registrableHost(url))) return { kind: 'gone', reason: PLATFORM_REASON };
+  return { kind: 'moved', origin: originOf(url) };
+}
+
+/**
+ * Kayıt formu asla kabul edilmeyecek host mu? (park/satış ya da büyük
+ * platform — oradaki form hedef sitenin değil.)
+ */
+function isGoneHost(url: string): boolean {
+  return isParkedDomain(url, '') || PLATFORM_HOSTS.includes(registrableHost(url));
+}
+
+/**
+ * Ülke uzantısı atılmış domain: "example.com.tr" → "example.com",
+ * "example.de" → "example", "example.com" → "example.com".
+ */
+function withoutCountryCode(host: string): string {
+  return host.replace(/\.[a-z]{2}$/i, '');
+}
+
+/**
+ * Yalnızca ülke uzantısı mı değişti? (example.com → example.com.tr,
+ * example.de → example.fr). Sheet adresinde www dışında alt alan adı
+ * varsa HAYIR: mydir.notion.site → notion.so gibi platform alt
+ * alanları "aynı marka" sayılıp Notion'a kayıt açılabiliyordu.
+ */
+function onlyCountryCodeChanged(url: string, startOrigin: string): boolean {
+  let startHost: string;
+  try {
+    startHost = new URL(normalizeUrl(startOrigin)).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return false;
+  }
+  const from = registrableHost(startOrigin);
+  if (startHost !== from) return false;
+  // Kalan kısımda genel uzantı olmalı (example.com ↔ example.com.tr).
+  // foo.io ↔ foo.ai gibi iki harfli uzantılar pratikte genel uzantı;
+  // farklı sahiplere ait olabilir, istisna yok.
+  const stem = withoutCountryCode(from);
+  return stem.includes('.') && withoutCountryCode(registrableHost(url)) === stem;
+}
+
+/**
+ * Kayıt sayfası sheet'teki domainde değilse bunu adaya yazar. Config
+ * üretici bunu dry-run'ın kaldırmadığı bir onay işaretine çeviriyor:
+ * taşınma sanılan yer ölü domainin satış pazarı olabilir, o formu da
+ * dry-run "çalışıyor" bulur.
+ *
+ * Yalnızca ülke uzantısı değişimi (example.com → example.com.tr)
+ * taşınma sayılmaz: yönlendirmeyi eski domainin sahibi yapıyor.
+ */
+export function markMove(candidate: SignupCandidate, startOrigin: string): SignupCandidate {
+  const from = registrableHost(startOrigin);
+  if (sameSite(candidate.url, from) || onlyCountryCodeChanged(candidate.url, startOrigin)) return candidate;
+  return { ...candidate, movedFrom: from };
+}
+
 export interface SignupCandidate {
   url: string;
   /** high: şifre alanı + submit var. low: yalnızca email alanı bulundu. */
@@ -73,6 +196,8 @@ export interface SignupCandidate {
   hops: number;
   /** Nasıl bulunduğu — config notlarına yazılıyor. */
   method: 'direct-path' | 'link-follow' | 'origin';
+  /** Kayıt sayfası sheet'teki domainde değilse eski domain (angel.co). */
+  movedFrom?: string;
 }
 
 /**
@@ -85,7 +210,105 @@ export interface SignupCandidate {
 export type SignupSearchResult =
   | { kind: 'found'; candidate: SignupCandidate }
   | { kind: 'bot_protected'; url: string }
-  | { kind: 'not_found' };
+  | { kind: 'not_found'; reason?: string; hints?: SignupHint[] };
+
+/**
+ * Kayıt formu bulunamadığında sitede görülen başka akış.
+ *
+ * 18 "form yok" sitesinin elle incelemesinde en büyük iki parça:
+ *  - submit_form: hesapsız "sitenizi gönderin" formu (onepagelove,
+ *    blogs-collection, 1000.tools/signup: website + e-posta, şifre yok)
+ *  - email_first: giriş/kayıt yolunda tek e-posta alanı (techinasia
+ *    /auth, 1000.tools/login) — kod/link ya da 2. adımda şifre
+ * İkisi de kayıt sayılmıyor ama "form yok" da değil; tarama haritası
+ * hangi desteğin kaç siteyi açacağını göstersin diye ayrı raporlanıyor.
+ */
+export type SignupHint = 'submit_form' | 'email_first';
+
+/** Giriş/kayıt yolları — tek e-posta alanlı form burada bülten değil. */
+const AUTH_PATH = /\/(log[-_]?in|sign[-_]?in|sign[-_]?up|auth|register|join)(?=[/?#_-]|$)/i;
+
+/**
+ * Sayfada şifresiz bir gönderim ya da e-postayla giriş formu var mı?
+ * Yalnızca raporlama için: bu ipucuyla hiçbir form doldurulmuyor.
+ */
+async function pageHint(page: Page): Promise<SignupHint | null> {
+  // evaluate içinde adlandırılmış yardımcı YOK (tsx __name tuzağı).
+  const f = await page
+    .evaluate(() => {
+      // Blog yorum formları hariç: WordPress yorum kutusunda name="url"
+      // (Website) alanı var ve gönderim formu sanılıyordu.
+      const shown = Array.from(document.querySelectorAll('input, textarea')).filter(
+        (el) =>
+          el.getBoundingClientRect().width > 0 &&
+          el.getBoundingClientRect().height > 0 &&
+          !el.closest('#commentform, .comment-form, #respond, #comments'),
+      );
+      const fields = shown.filter((el) => {
+        const type = (el.getAttribute('type') ?? 'text').toLowerCase();
+        const label = `${el.getAttribute('name') ?? ''} ${el.getAttribute('placeholder') ?? ''} ${el.id}`;
+        if (el.tagName === 'TEXTAREA') return true;
+        return ['text', 'email', 'url', 'tel', ''].includes(type) && !/search|query/i.test(label);
+      });
+      return {
+        passwords: shown.filter((el) => (el.getAttribute('type') ?? '').toLowerCase() === 'password').length,
+        // E-posta alanları hariç ("you@domain.com" placeholder'ı bülten
+        // kutusunu gönderim formu yapıyordu); kelime sınırıyla eşleşme.
+        urlFields: fields.filter((el) => {
+          const type = (el.getAttribute('type') ?? '').toLowerCase();
+          // camelCase ayrılıp küçültülüyor: companyWebsite → "company website".
+          const label = `${el.getAttribute('name') ?? ''} ${el.getAttribute('placeholder') ?? ''} ${el.id}`
+            .replace(/([a-z])([A-Z])/g, '$1 $2')
+            .toLowerCase();
+          if (type === 'url') return true;
+          if (type === 'email' || /e-?mail|@/.test(label)) return false;
+          return /(^|[^a-z])(website|url|domain|homepage)([^a-z]|$)/.test(label);
+        }).length,
+        fields: fields.length,
+        submits: Array.from(document.querySelectorAll('button, input[type="submit"]')).filter(
+          (el) => el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height > 0,
+        ).length,
+        // Bülten OLMAYAN görünür e-posta alanları. Her alan kendi formunun
+        // çevresine göre değerlendiriliyor, sayfa geneline değil:
+        // techinasia'nın başlığında "SUBSCRIBE" butonu, pek çok giriş
+        // sayfasının altbilgisinde bülten formu var. "Join our newsletter"
+        // (/join yolunda) gibi formlar ise kendi çevresinden eleniyor.
+        // Üst öğe metni kısaysa (modal/bölüm) o da dahil; uzunsa yalnızca
+        // formun kendisi.
+        authEmails: fields.filter((el) => {
+          const isEmail =
+            (el.getAttribute('type') ?? '').toLowerCase() === 'email' ||
+            /e-?mail/i.test(`${el.getAttribute('name') ?? ''} ${el.getAttribute('placeholder') ?? ''}`);
+          if (!isEmail) return false;
+          const form = el.closest('form') as HTMLElement | null;
+          const parentText = (form?.parentElement as HTMLElement | null)?.innerText ?? '';
+          const context = `${form?.innerText ?? ''} ${
+            Array.from(form?.querySelectorAll('input[type="submit"]') ?? [])
+              .map((b) => (b as HTMLInputElement).value)
+              .join(' ')
+          } ${parentText.length < 500 ? parentText : ''}`;
+          return !/newsletter|subscribe/i.test(context);
+        }).length,
+      };
+    })
+    .catch(() => null);
+
+  if (!f || f.passwords > 0 || f.submits === 0) return null;
+  // URL alanı olan şifresiz form gönderimdir — /signup yolunda olsa bile
+  // (1000.tools/signup gerçek vakası).
+  if (f.urlFields > 0) return 'submit_form';
+
+  let path = '';
+  try {
+    path = new URL(page.url()).pathname;
+  } catch {
+    return null;
+  }
+  // Auth yolu şartı bülteni ayırıyor: ana sayfadaki/"newsletter"
+  // sayfasındaki tek e-posta alanı giriş değil.
+  if (AUTH_PATH.test(path) && f.authEmails >= 1 && f.fields <= 2) return 'email_first';
+  return null;
+}
 
 /**
  * Sayfada kayıt formu var mı?
@@ -149,7 +372,12 @@ async function evaluateForm(page: Page): Promise<'high' | 'low' | null> {
  */
 type TryResult = 'high' | 'low' | 'bot_wall' | null;
 
-async function tryUrl(page: Page, url: string, baseDomain?: string): Promise<TryResult> {
+async function tryUrl(
+  page: Page,
+  url: string,
+  baseDomain?: string,
+  hints?: Set<SignupHint>,
+): Promise<TryResult> {
   try {
     // Kısa timeout: site ayakta olduğu zaten doğrulandı, bu yol yoksa
     // hızlıca sıradakine geçilmeli (8 yol × uzun timeout = dakikalar).
@@ -164,10 +392,11 @@ async function tryUrl(page: Page, url: string, baseDomain?: string): Promise<Try
     // 404/5xx sayfalarında form aramanın anlamı yok.
     if (status >= 400) return null;
 
+    const checkedUrl = page.url();
     if (
       baseDomain &&
       !acceptsOffSiteUrl({
-        url: page.url(),
+        url: checkedUrl,
         baseDomain,
         redirected: wasRedirected(res),
       })
@@ -175,7 +404,24 @@ async function tryUrl(page: Page, url: string, baseDomain?: string): Promise<Try
       return null;
     }
 
-    return await evaluateForm(page);
+    const form = await evaluateForm(page);
+
+    // evaluateForm 2.5sn bekliyor; bu sürede JS yönlendirmesi başka siteye
+    // geçmiş olabilir (github.com/signup gibi). Formun bulunduğu URL
+    // yeniden kontrol edilir: park/platform asla, başka domain yalnızca
+    // kontrol anındakiyle aynıysa (HTTP ile kabul edilmiş taşınma).
+    // İpucu da aynı kurala tabi — başka sitenin formu bu sitenin haritası değil.
+    const finalUrl = page.url();
+    if (isGoneHost(finalUrl)) return null;
+    if (baseDomain && !sameSite(finalUrl, baseDomain) && registrableHost(finalUrl) !== registrableHost(checkedUrl)) {
+      return null;
+    }
+
+    if (!form && hints) {
+      const hint = await pageHint(page);
+      if (hint) hints.add(hint);
+    }
+    return form;
   } catch {
     return null;
   }
@@ -264,8 +510,10 @@ export async function findSignupPage(
   opts: { maxHops?: number } = {},
 ): Promise<SignupSearchResult> {
   const maxHops = opts.maxHops ?? 2;
-  const origin = originOf(website);
-  const baseDomain = registrableHost(origin);
+  const startOrigin = originOf(website);
+  // Site taşınmışsa (angel.co → wellfound.com) ikisi de yeni domaine geçer.
+  let origin = startOrigin;
+  let baseDomain = registrableHost(origin);
 
   // 0. Site ayakta mı? Yanıt vermeyen sitede 8 yolu tek tek denemek
   // site başına ~3 dk harcıyor (affordhunt.com boş sayfa döndürüyordu).
@@ -276,19 +524,49 @@ export async function findSignupPage(
 
   // Ana sayfa bot duvarıysa alt yolları denemenin anlamı yok — hepsi
   // aynı duvarı verir ve site "form yok" diye kaydedilirdi.
-  const homeBody = await page.evaluate(() => document.body?.innerText ?? '').catch(() => '');
+  let homeBody = await bodyText(page);
   if (isBotWall(homeRes?.status() ?? 0, homeBody)) {
     return { kind: 'bot_protected', url: origin };
   }
 
   if (homeRes && homeRes.status() >= 400) return { kind: 'not_found' };
 
-  // Ana sayfa boş mu? (park edilmiş/kapanmış domainler)
-  if (homeBody.trim().length <= 50) return { kind: 'not_found' };
+  // Boş görünen sayfa hemen "ölü" sayılmaz. Gerçek vakalar: appagg.com
+  // boş gövde + Cloudflare "Verify you are human" kutusu (bot duvarı);
+  // prefundia.com ilk anda boş, JS ile satış sayfasına yönleniyor. Geç
+  // render eden tek sayfalık uygulamalar da ilk anda boş. Kısa bekleyip
+  // yeniden bakılıyor.
+  if (homeBody.trim().length <= 50) {
+    const captcha = await waitForCaptcha(page, 3000);
+    // Yalnızca duvar tipi challenge'lar. reCAPTCHA duvar değil: SPA'lar
+    // formları için görünmez v3 yüklüyor ve onun iframe'i tespitte
+    // recaptcha_v2 görünüyor. Bulunduğu an dönüldüğü için render'ı bekle.
+    const wall = captcha === 'turnstile' || captcha === 'hcaptcha' || captcha === 'unknown_challenge';
+    if (captcha && !wall) await page.waitForTimeout(3000);
+    homeBody = await bodyText(page);
+    // Park kontrolü duvardan önce: challenge gösteren satış sayfası
+    // "bot korumalı" değil "kapanmış" olarak kaydedilmeli.
+    const early = resolveLanding(page.url(), homeBody, origin);
+    if (early.kind === 'gone') return { kind: 'not_found', reason: early.reason };
+    if (wall || isBotWall(0, homeBody)) return { kind: 'bot_protected', url: origin };
+    if (homeBody.trim().length <= 50) return { kind: 'not_found' };
+  }
+
+  const landing = resolveLanding(page.url(), homeBody, origin);
+  if (landing.kind === 'gone') return { kind: 'not_found', reason: landing.reason };
+  if (landing.kind === 'moved') {
+    origin = landing.origin;
+    baseDomain = registrableHost(origin);
+  }
 
   // Alt yollarda bot duvarı görülürse hatırla: form bulunamazsa sonuç
   // "form yok" değil "bot korumalı" olmalı.
   let sawBotWall = false;
+
+  // Kayıt formu olmayan ama gönderim/e-postayla giriş akışı olan sayfalar.
+  const hints = new Set<SignupHint>();
+  const notFound = (): SignupSearchResult =>
+    hints.size > 0 ? { kind: 'not_found', hints: [...hints] } : { kind: 'not_found' };
 
   // 1. Doğrudan yollar — ucuz, çoğu sitede tutuyor.
   //
@@ -303,7 +581,7 @@ export async function findSignupPage(
   for (const [i, path] of DIRECT_PATHS.entries()) {
     if (i > 0) await page.waitForTimeout(800 + Math.random() * 400);
     const url = `${origin}${path}`;
-    const result = await tryUrl(page, url, baseDomain);
+    const result = await tryUrl(page, url, baseDomain, hints);
     if (result === 'bot_wall') {
       sawBotWall = true;
       continue;
@@ -311,7 +589,10 @@ export async function findSignupPage(
     if (result) {
       return {
         kind: 'found',
-        candidate: { url: page.url(), confidence: result, hops: 0, method: 'direct-path' },
+        candidate: markMove(
+          { url: page.url(), confidence: result, hops: 0, method: 'direct-path' },
+          startOrigin,
+        ),
       };
     }
   }
@@ -321,7 +602,15 @@ export async function findSignupPage(
     await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 25_000 });
     await page.waitForTimeout(2500);
   } catch {
-    return sawBotWall ? { kind: 'bot_protected', url: origin } : { kind: 'not_found' };
+    return sawBotWall ? { kind: 'bot_protected', url: origin } : notFound();
+  }
+
+  // Yavaş JS yönlendirmesi ilk kontrolden sonra tamamlanmış olabilir.
+  const relanding = resolveLanding(page.url(), await bodyText(page), origin);
+  if (relanding.kind === 'gone') return { kind: 'not_found', reason: relanding.reason };
+  if (relanding.kind === 'moved') {
+    origin = relanding.origin;
+    baseDomain = registrableHost(origin);
   }
 
   // Ana sayfanın kendisinde form olabilir (tek sayfalık siteler).
@@ -329,19 +618,29 @@ export async function findSignupPage(
   if (onHome === 'high') {
     return {
       kind: 'found',
-      candidate: { url: page.url(), confidence: 'high', hops: 0, method: 'origin' },
+      candidate: markMove(
+        { url: page.url(), confidence: 'high', hops: 0, method: 'origin' },
+        startOrigin,
+      ),
     };
   }
+  // Ana sayfada "sitenizi gönderin" kutusu olabilir (yol "/" olduğu için
+  // e-postayla giriş ipucu burada çıkmaz — bülten kutuları elenir).
+  const homeHint = await pageHint(page);
+  if (homeHint) hints.add(homeHint);
 
   const links = await collectSignupLinks(page, origin);
 
   for (const link of links.slice(0, maxHops * 3)) {
-    const result = await tryUrl(page, link, baseDomain);
+    const result = await tryUrl(page, link, baseDomain, hints);
     if (result === 'bot_wall') sawBotWall = true;
     else if (result) {
       return {
         kind: 'found',
-        candidate: { url: page.url(), confidence: result, hops: 1, method: 'link-follow' },
+        candidate: markMove(
+          { url: page.url(), confidence: result, hops: 1, method: 'link-follow' },
+          startOrigin,
+        ),
       };
     }
 
@@ -350,24 +649,26 @@ export async function findSignupPage(
       const second = await collectSignupLinks(page, origin);
       for (const inner of second.slice(0, 3)) {
         if (inner === link) continue;
-        const innerResult = await tryUrl(page, inner, baseDomain);
+        const innerResult = await tryUrl(page, inner, baseDomain, hints);
         if (innerResult === 'bot_wall') sawBotWall = true;
         else if (innerResult) {
           return {
             kind: 'found',
-            candidate: {
-              url: page.url(),
-              confidence: innerResult,
-              hops: 2,
-              method: 'link-follow',
-            },
+            candidate: markMove(
+              { url: page.url(), confidence: innerResult, hops: 2, method: 'link-follow' },
+              startOrigin,
+            ),
           };
         }
       }
     }
   }
 
-  return sawBotWall ? { kind: 'bot_protected', url: origin } : { kind: 'not_found' };
+  return sawBotWall ? { kind: 'bot_protected', url: origin } : notFound();
+}
+
+function bodyText(page: Page): Promise<string> {
+  return page.evaluate(() => document.body?.innerText ?? '').catch(() => '');
 }
 
 /** Sayfadaki kayıt adayı linkleri toplar, giriş linklerini geriye atar. */

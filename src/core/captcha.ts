@@ -95,7 +95,9 @@ export async function waitForCaptcha(
 ): Promise<CaptchaKind | null> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const kind = await detectCaptcha(page);
+    // Bekleme sırasında sayfa gezinebilir (JS yönlendirmesi); o anki
+    // "execution context destroyed" hatası captcha yok demek değil.
+    const kind = await detectCaptcha(page).catch(() => null);
     if (kind) return kind;
     if (Date.now() >= deadline) return null;
     await page.waitForTimeout(intervalMs);

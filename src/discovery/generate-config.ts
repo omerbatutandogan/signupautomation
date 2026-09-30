@@ -7,12 +7,15 @@
  */
 
 import { parseSiteConfig } from '../adapters/schema.js';
+import { awaitsMoveApproval, MOVE_MARKER } from '../core/markers.js';
 import type { RiskLevel, SiteConfig, Step } from '../core/types.js';
 import type { FormAnalysis } from './analyze-form.js';
-import type { SignupCandidate } from './find-signup.js';
+import { registrableHost, type SignupCandidate } from './find-signup.js';
 
 /** Bu damgayı taşıyan config'ler run-batch tarafından atlanır. */
 export const UNVERIFIED_MARKER = 'OTOMATİK ÜRETİLDİ — doğrulanmadı';
+
+export { MOVE_MARKER, awaitsMoveApproval };
 
 /**
  * Kayıt başarısını gösteren varsayılan desenler.
@@ -203,6 +206,11 @@ export function generateConfig(input: GenerateInput): GenerateResult {
   if (analysis.captcha) {
     warnings.push(`Captcha tespit edildi: ${analysis.captcha}`);
   }
+  if (candidate.movedFrom) {
+    warnings.push(
+      `Site taşınmış: ${candidate.movedFrom} → ${registrableHost(candidate.url)} — kaydın doğru sitede olduğunu kontrol et`,
+    );
+  }
   if (analysis.hiddenRequired?.length) {
     // Görünmez zorunlu alan = sessiz form reddi. Awwwards'ta şartlar
     // kutucuğu böyleydi; check() çalışmıyor, label[for=...] tıklanmalı.
@@ -213,6 +221,7 @@ export function generateConfig(input: GenerateInput): GenerateResult {
 
   const notes = [
     UNVERIFIED_MARKER,
+    candidate.movedFrom ? MOVE_MARKER : '',
     `Keşif: ${candidate.method}, ${candidate.hops} sıçrama, güven: ${candidate.confidence}.`,
     analysis.captcha ? `Captcha: ${analysis.captcha}.` : 'Captcha görülmedi.',
     unmapped.length > 0 ? `TODO eşlenmeyen zorunlu alanlar: ${unmapped.join(', ')}.` : '',
@@ -224,7 +233,9 @@ export function generateConfig(input: GenerateInput): GenerateResult {
   const draft = {
     id,
     name,
-    risk: riskFor(website),
+    // Kayıt sayfası başka domainde olabilir (taşınma/yönlendirme): G2'ye
+    // yönlenen bir dizin sheet adresine bakınca "low" görünürdü.
+    risk: riskFor(candidate.url) === 'high' ? 'high' : riskFor(website),
     signupUrl: candidate.url,
     notes,
     steps,
@@ -247,7 +258,7 @@ export function generateConfig(input: GenerateInput): GenerateResult {
 
 /** Config doğrulanmamış mı? run-batch bu kontrolü kullanıyor. */
 export function isUnverified(config: Pick<SiteConfig, 'notes'>): boolean {
-  return (config.notes ?? '').includes(UNVERIFIED_MARKER);
+  return (config.notes ?? '').includes(UNVERIFIED_MARKER) || awaitsMoveApproval(config);
 }
 
 /**

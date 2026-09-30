@@ -15,6 +15,7 @@ import { launchContext } from './browser.js';
 import { createArtifacts, captureFailure } from './artifacts.js';
 import { classify, CaptchaRequiredError, ManualReviewError } from './errors.js';
 import { waitForCaptchaCleared } from './captcha.js';
+import { awaitsMoveApproval, MOVE_MARKER } from './markers.js';
 import { canAutoVerify, checkDryRunPage } from './dry-run-check.js';
 import { derivePasswordForSite } from '../identity/password.js';
 import { signupEmail, usernameForSite } from '../identity/email.js';
@@ -119,6 +120,22 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
   if (adapter.risk === 'high') {
     log.warn('Yüksek riskli site — ToS gereği otomasyon dışı, manuel listeye');
     return exitEarly({ status: 'skipped_high_risk', note: 'ToS otomatik kaydı yasaklıyor' });
+  }
+
+  // 1b. Taşınma onayı kapısı — ağdan ÖNCE. Keşif başka domaine taşınmış
+  // sitenin config'ine onay damgası basıyor; taşınma sanılan yer satış
+  // pazarı ya da platform olabilir. Dry-run serbest (submit yok); gerçek
+  // kayıt, insan damgayı silene kadar hiçbir yoldan (run, run-batch,
+  // signup) yapılmaz.
+  if (!opts.dryRun) {
+    const gateConfig = opts.siteConfig ?? (await loadSiteConfigFor(adapter).catch(() => null));
+    if (gateConfig && awaitsMoveApproval(gateConfig)) {
+      log.warn('Site başka domaine taşınmış — insan onayı olmadan gerçek kayıt yok');
+      return exitEarly({
+        status: 'manual',
+        note: `Site taşınmış, onay bekliyor — doğru siteyse config notlarındaki "${MOVE_MARKER}" damgasını sil`,
+      });
+    }
   }
 
   // Profil ağdan ÖNCE yükleniyor: geçersiz profil (eksik açıklama, hatalı

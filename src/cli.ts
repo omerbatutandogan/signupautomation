@@ -14,7 +14,7 @@ import { listSiteIds, loadSiteConfig } from './adapters/registry.js';
 import { derivePasswordForSite } from './identity/password.js';
 import { createGmailClient, verifyGmailAccess } from './integrations/gmail.js';
 import { siteIdFromWebsite } from './integrations/sheet.js';
-import { findSignupPage } from './discovery/find-signup.js';
+import { findSignupPage, originOf } from './discovery/find-signup.js';
 import { analyzeForm } from './discovery/analyze-form.js';
 import { generateConfig } from './discovery/generate-config.js';
 import { makeGenericAdapter } from './adapters/generic.js';
@@ -72,7 +72,9 @@ Komutlar:
  */
 async function markVerified(siteId: string): Promise<void> {
   const { readFile, writeFile } = await import('node:fs/promises');
-  const { isUnverified, clearUnverifiedMarker } = await import('./discovery/generate-config.js');
+  const { isUnverified, clearUnverifiedMarker, MOVE_MARKER } = await import(
+    './discovery/generate-config.js'
+  );
 
   const path = `src/sites/${siteId}.json`;
   try {
@@ -81,7 +83,13 @@ async function markVerified(siteId: string): Promise<void> {
 
     cfg.notes = clearUnverifiedMarker(cfg.notes);
     await writeFile(path, `${JSON.stringify(cfg, null, 2)}\n`);
-    console.log(`   ✓ Config doğrulandı — run-batch artık işleyebilir`);
+    if (isUnverified(cfg)) {
+      console.log(
+        `   ⚠️  Dry-run geçti ama site taşınmış — doğru siteyse notlardaki "${MOVE_MARKER}" damgasını elle sil`,
+      );
+    } else {
+      console.log(`   ✓ Config doğrulandı — run-batch artık işleyebilir`);
+    }
   } catch {
     // Config okunamadıysa sessizce geç — asıl iş zaten başarılı oldu.
   }
@@ -160,7 +168,9 @@ async function cmdSignup(website: string, flags: Set<string>, productId: string)
         return 1;
       }
       if (search.kind === 'not_found') {
-        console.error(`❌ Kayıt sayfası bulunamadı: ${website}`);
+        const why =
+          search.reason ?? (search.hints?.length ? `görülen akış: ${search.hints.join(', ')}` : '');
+        console.error(`❌ Kayıt sayfası bulunamadı: ${website}${why ? ` (${why})` : ''}`);
         return 1;
       }
 
@@ -181,6 +191,16 @@ async function cmdSignup(website: string, flags: Set<string>, productId: string)
 
       if (config.risk === 'high') {
         console.error(`⛔ ToS otomatik kaydı yasaklıyor — manuel listeye: ${website}`);
+        return 1;
+      }
+
+      // Taşınma sanılan yer ölü domainin satış pazarı olabilir: gerçek
+      // kayıt, yeni adres açıkça verilerek yapılmalı.
+      const moved = search.candidate.movedFrom;
+      if (moved && !dryRun) {
+        console.error(
+          `⛔ ${moved} başka siteye yönleniyor (${originOf(search.candidate.url)}). Doğru siteyse yeni adresle çalıştır: signup ${originOf(search.candidate.url)} --live`,
+        );
         return 1;
       }
 
@@ -352,7 +372,7 @@ async function cmdRunBatch(flags: Set<string>, positional: string[]): Promise<nu
   console.log(`\nSheet'te işlenmeye uygun: ${pending.length} satır`);
 
   // Yalnızca config'i yazılmış siteler işlenebilir.
-  const { isUnverified } = await import('./discovery/generate-config.js');
+  const { isUnverified, awaitsMoveApproval } = await import('./discovery/generate-config.js');
   const includeUnverified = flags.has('--include-unverified');
   const runnable: typeof pending = [];
   let skippedUnverified = 0;
@@ -365,6 +385,12 @@ async function cmdRunBatch(flags: Set<string>, positional: string[]): Promise<nu
     // Otomatik üretilmiş ama --dry-run ile doğrulanmamış config'ler
     // atlanır: yanlış selector'la gerçek kayıt denemek, yanlış forma
     // veri göndermek demek.
+    // Taşınmış site bayraktan bağımsız atlanır: hata burada yanlış
+    // selector değil, yanlış SİTEYE kayıt.
+    if (awaitsMoveApproval(cfg)) {
+      skippedUnverified++;
+      continue;
+    }
     if (isUnverified(cfg) && !includeUnverified) {
       skippedUnverified++;
       continue;

@@ -43,6 +43,9 @@ type SiteResult =
   | { siteId: string; website: string; outcome: 'completed'; issues: 0 }
   | { siteId: string; website: string; outcome: 'manual'; issues: number; reasons: string[] }
   | { siteId: string; website: string; outcome: 'no_form' }
+  // "form yok"un ayrıştırılmış parçaları: sitede başka bir akış var ya
+  // da site kapanmış.
+  | { siteId: string; website: string; outcome: 'submit_form' | 'email_first' | 'dead'; reason?: string }
   | { siteId: string; website: string; outcome: 'bot_protected' }
   | { siteId: string; website: string; outcome: 'error'; message: string };
 
@@ -51,7 +54,13 @@ async function evalSite(browser: Browser, site: EvalSite, profile: SignupProfile
   try {
     const search = await findSignupPage(page, site.website);
     if (search.kind === 'bot_protected') return { siteId: site.siteId, website: site.website, outcome: 'bot_protected' };
-    if (search.kind === 'not_found') return { siteId: site.siteId, website: site.website, outcome: 'no_form' };
+    if (search.kind === 'not_found') {
+      const base = { siteId: site.siteId, website: site.website };
+      if (search.reason) return { ...base, outcome: 'dead', reason: search.reason };
+      if (search.hints?.includes('email_first')) return { ...base, outcome: 'email_first' };
+      if (search.hints?.includes('submit_form')) return { ...base, outcome: 'submit_form' };
+      return { ...base, outcome: 'no_form' };
+    }
 
     const analysis = await analyzeForm(page);
     const { config, warnings } = generateConfig({
@@ -154,11 +163,11 @@ async function main(): Promise<void> {
           ? '✅ completed'
           : r.outcome === 'manual'
             ? `🙋 manual (${r.issues} sorun)`
-            : r.outcome === 'no_form'
-              ? '❌ no_form'
+            : r.outcome === 'error'
+              ? `⚠️ error: ${r.message}`
               : r.outcome === 'bot_protected'
                 ? '🛡️ bot_protected'
-                : `⚠️ error: ${r.message}`,
+                : `❌ ${r.outcome}`,
       );
     }
   } finally {
@@ -172,6 +181,9 @@ async function main(): Promise<void> {
   console.log(`   ✅ completed (sıfır elle müdahale):  ${tally.completed ?? 0}/${results.length}`);
   console.log(`   🙋 manual (elle müdahale gerekir):    ${tally.manual ?? 0}/${results.length}`);
   console.log(`   ❌ no_form:                            ${tally.no_form ?? 0}/${results.length}`);
+  console.log(`      📨 submit_form (hesapsız gönderim):   ${tally.submit_form ?? 0}/${results.length}`);
+  console.log(`      ✉️  email_first (kod/link girişi):     ${tally.email_first ?? 0}/${results.length}`);
+  console.log(`      💀 dead (park/kapanmış):             ${tally.dead ?? 0}/${results.length}`);
   console.log(`   🛡️  bot_protected:                      ${tally.bot_protected ?? 0}/${results.length}`);
   console.log(`   ⚠️  error:                              ${tally.error ?? 0}/${results.length}`);
 
@@ -187,7 +199,12 @@ async function main(): Promise<void> {
     console.log('\n── Başlangıç → Son ──');
     console.log(`   completed: ${baseline.tally.completed ?? 0} → ${tally.completed ?? 0}`);
     console.log(`   manual:    ${baseline.tally.manual ?? 0} → ${tally.manual ?? 0}`);
-    await writeFile('data/eval-final.json', JSON.stringify({ at: Date.now(), results, tally }, null, 2));
+    console.log(`   no_form:   ${baseline.tally.no_form ?? 0} → ${tally.no_form ?? 0}`);
+    // --out: önceki sonucun üzerine yazmamak için (varsayılan eski davranış).
+    const outIdx = args.indexOf('--out');
+    const outPath = (outIdx >= 0 ? args[outIdx + 1] : undefined) ?? 'data/eval-final.json';
+    await writeFile(outPath, JSON.stringify({ at: Date.now(), results, tally }, null, 2));
+    console.log(`\n${outPath} yazıldı.`);
   }
 }
 
