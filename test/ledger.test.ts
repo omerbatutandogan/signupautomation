@@ -79,6 +79,22 @@ describe('denemeler', () => {
     expect(ledger.terminalResult('site-a')?.status).toBe('completed');
   });
 
+  it('dry-run sonucu terminal SAYILMAZ — gerçek kayıt atlanmasın', () => {
+    // Gerçek hata: başarılı dry-run "completed" + terminal yazılıyordu;
+    // run-batch (force'suz) siteyi "zaten bitmiş" diye atlıyor ve o
+    // dry-run'ı Sheet'e "tamamlandı" olarak yazıyordu.
+    const d = ledger.startAttempt('site-a', 'run-1', true);
+    ledger.finishAttempt(d, 'completed', 'dry-run');
+    expect(ledger.terminalResult('site-a')).toBeNull();
+
+    // Gerçek sonuç, sonrasında dry-run olsa bile geçerli kalır.
+    const r = ledger.startAttempt('site-a', 'run-2');
+    ledger.finishAttempt(r, 'completed');
+    const d2 = ledger.startAttempt('site-a', 'run-3', true);
+    ledger.finishAttempt(d2, 'manual', 'dry-run kontrolü');
+    expect(ledger.terminalResult('site-a')?.status).toBe('completed');
+  });
+
   it('manual ve failed da terminal sayılır', () => {
     const a1 = ledger.startAttempt('site-a', 'run-1');
     ledger.finishAttempt(a1, 'manual', 'captcha yanıtsız');

@@ -15,6 +15,7 @@ import { derivePasswordForSite } from './identity/password.js';
 import { createGmailClient, verifyGmailAccess } from './integrations/gmail.js';
 import { siteIdFromWebsite } from './integrations/sheet.js';
 import { findSignupPage, originOf } from './discovery/find-signup.js';
+import { batchProgress } from './core/batch-progress.js';
 import { analyzeForm } from './discovery/analyze-form.js';
 import { generateConfig } from './discovery/generate-config.js';
 import { makeGenericAdapter } from './adapters/generic.js';
@@ -430,32 +431,7 @@ async function cmdRunBatch(flags: Set<string>, positional: string[]): Promise<nu
         log: logger,
         ledger,
         dryRun,
-        onProgress: {
-          started: (runId) => sheet.markInProgress(row, runId),
-          finished: async (result, identity) => {
-            // skipped_terminal "zaten bitmiş" demek ama nasıl bittiğini
-            // taşımıyor — gerçek sonucu ledger'dan alıp Sheet'e yaz.
-            if (result.status === 'skipped_terminal') {
-              const prev = ledger.terminalResult(row.siteId);
-              const creds = ledger.credentials(row.siteId);
-              if (prev) {
-                await sheet.writeOutcome(
-                  row,
-                  { status: prev.status as typeof result.status, note: prev.note ?? undefined },
-                  creds
-                    ? {
-                        email: creds.email,
-                        username: creds.username,
-                        profileUrl: creds.profile_url ?? undefined,
-                      }
-                    : undefined,
-                );
-                return;
-              }
-            }
-            await sheet.writeOutcome(row, result, identity);
-          },
-        },
+        onProgress: batchProgress({ dryRun, sheet, ledger, row }),
       });
 
       const icon =

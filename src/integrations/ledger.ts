@@ -194,11 +194,15 @@ export class Ledger {
   /**
    * Site daha önce terminal bir sonuca ulaştı mı?
    * Sheet yanlışlıkla sıfırlansa bile tekrar kayıt denemesini engeller.
+   *
+   * Dry-run'lar sayılmaz: submit etmedikleri için hesap açmıyorlar. Eskiden
+   * başarılı dry-run "completed" dönüyordu; run-batch siteyi "zaten
+   * bitmiş" diye atlıyor ve dry-run'ı Sheet'e "tamamlandı" yazıyordu.
    */
   terminalResult(siteId: SiteId): { status: string; note: string | null } | null {
     const row = this.db
       .prepare(
-        'SELECT status, note FROM attempts WHERE site_id = ? AND terminal = 1 ORDER BY finished_at DESC LIMIT 1',
+        'SELECT status, note FROM attempts WHERE site_id = ? AND terminal = 1 AND dry_run = 0 ORDER BY finished_at DESC LIMIT 1',
       )
       .get(siteId) as { status: string; note: string | null } | undefined;
     return row ?? null;
