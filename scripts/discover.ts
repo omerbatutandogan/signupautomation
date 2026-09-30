@@ -25,6 +25,8 @@ import {
   HINT_REASON,
   RETRYABLE,
   SiteTimeoutError,
+  guardSite,
+  settleWithin,
   shouldEnqueue,
   withSiteTimeout,
   type Outcome as QueueOutcome,
@@ -170,7 +172,7 @@ async function discoverSite(
       if (err instanceof SiteTimeoutError) return { outcome: 'error', reason: err.message };
       logger.debug({ err: (err as Error).message }, 'headless deneme hatası');
     } finally {
-      await page.close().catch(() => undefined);
+      await settleWithin(page.close(), 15_000);
     }
   }
 
@@ -192,7 +194,7 @@ async function discoverSite(
     if (botWalled) return { outcome: 'bot_protected', reason: BOT_REASON };
     return { outcome: 'error', reason: (err as Error).message.slice(0, 150) };
   } finally {
-    await page.close().catch(() => undefined);
+    await settleWithin(page.close(), 15_000);
   }
 }
 
@@ -241,19 +243,39 @@ async function main(): Promise<void> {
     return;
   }
 
-  const headless = await chromium.launch({
-    headless: true,
-    args: ['--disable-blink-features=AutomationControlled'],
-  });
+  const launchHeadless = (): Promise<Browser> =>
+    chromium.launch({ headless: true, args: ['--disable-blink-features=AutomationControlled'] });
+  // Bekçi takılan tarayıcıyı atıp yenisini açabilsin diye `let`.
+  let headless = await launchHeadless();
 
   // Headed tarayıcı yalnızca gerekince açılır — 170 pencere açmamak için.
-  const headedRef: { browser: Browser | null } = { browser: null };
+  // Tarayıcı değil AÇILIŞ saklanıyor: bekçi takılmış bir açılışı bıraktığında
+  // geç tamamlanan açılış eski referansı ezip pencere sızdırıyordu; kurtarma
+  // artık açılış ne zaman biterse o tarayıcıyı kapatıyor.
+  const headedRef: { launching: Promise<Browser> | null } = { launching: null };
   const headedBrowser = async (): Promise<Browser> => {
-    headedRef.browser ??= await chromium.launch({
-      headless: false,
-      args: ['--disable-blink-features=AutomationControlled'],
-    });
-    return headedRef.browser;
+    if (!headedRef.launching) {
+      const launching: Promise<Browser> = chromium
+        .launch({ headless: false, args: ['--disable-blink-features=AutomationControlled'] })
+        .catch((err: unknown) => {
+          // Başarısız açılış saklanmasın — yoksa sonraki her deneme aynı
+          // hatayı alır. Yalnızca hâlâ güncel açılışsa temizle: bekçinin
+          // bıraktığı eski açılışın geç hatası yenisini silmesin.
+          if (headedRef.launching === launching) headedRef.launching = null;
+          throw err;
+        });
+      headedRef.launching = launching;
+    }
+    const browser = await headedRef.launching;
+    if (browser.isConnected()) return browser;
+    headedRef.launching = null;
+    return headedBrowser();
+  };
+  // Bağlantısı kopmuş headless yeniden açılır (kurtarmada açılış başarısız
+  // olduysa sonraki site "Target closed" ile düşmesin).
+  const getHeadless = async (): Promise<Browser> => {
+    if (!headless.isConnected()) headless = await launchHeadless();
+    return headless;
   };
 
   const tally: Record<Outcome, number> = {
@@ -271,7 +293,26 @@ async function main(): Promise<void> {
     for (const [i, row] of batch.entries()) {
       process.stdout.write(`[${i + 1}/${batch.length}] ${row.siteId.padEnd(22)} `);
 
-      const result = await discoverSite(headless, row, { forceHeaded, headedBrowser });
+      // Sitenin tamamına bekçi: denemeler kendi sınırında ama açma/kapama
+      // adımları değil — financesonline'da tarama 12 saat takıldı.
+      const result = await guardSite<SiteResult>(
+        (async () => discoverSite(await getHeadless(), row, { forceHeaded, headedBrowser }))(),
+        async () => {
+          // Takılan tarayıcıları at, temiz başla. Headed açılışı henüz
+          // bitmemişse bittiğinde kapatılır (sızıntı yok).
+          const oldHeaded = headedRef.launching;
+          headedRef.launching = null;
+          if (oldHeaded) void oldHeaded.then((b) => b.close()).catch(() => undefined);
+          const stuck = headless;
+          await settleWithin(stuck.close(), 15_000);
+          const fresh = await launchHeadless();
+          // Açılış kurtarma süresini aşıp geç bittiyse getHeadless() çoktan
+          // yenisini açmış olabilir — onu ezme, fazlasını kapat.
+          if (headless === stuck) headless = fresh;
+          else void fresh.close().catch(() => undefined);
+        },
+        (reason) => ({ outcome: 'error', reason }),
+      );
       tally[result.outcome]++;
 
       progress.entries[row.siteId] = {
@@ -293,16 +334,18 @@ async function main(): Promise<void> {
         const icon =
           result.outcome === 'high_risk' ? '⛔' : result.outcome === 'bot_protected' ? '🛡️' : '❌';
         console.log(`${icon} ${result.reason ?? result.outcome}`);
-        await sheet
-          .writeOutcome(row, { status: 'manual', note: result.reason ?? result.outcome })
-          .catch(() => undefined);
+        // googleapis isteklerinde varsayılan süre sınırı yok.
+        await settleWithin(
+          sheet.writeOutcome(row, { status: 'manual', note: result.reason ?? result.outcome }),
+          30_000,
+        );
       }
 
       if (i < batch.length - 1) await politePause();
     }
   } finally {
-    await headless.close().catch(() => undefined);
-    await headedRef.browser?.close().catch(() => undefined);
+    await settleWithin(headless.close(), 15_000);
+    if (headedRef.launching) await settleWithin(headedRef.launching.then((b) => b.close()), 15_000);
   }
 
   console.log(`\n── Keşif Özeti ──`);

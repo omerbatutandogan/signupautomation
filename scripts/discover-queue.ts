@@ -68,6 +68,43 @@ export async function withSiteTimeout<T>(
   }
 }
 
+/** Bir sitenin TAMAMI (headless + headed + açma/kapama) için üst süre. */
+export const SITE_TOTAL_TIMEOUT_MS = 10 * 60_000;
+
+/**
+ * Sitenin tamamına bekçi: iş süreyi aşarsa kurtarmayı (takılan
+ * tarayıcıları kapatıp yenilerini açma) çalıştırır ve hata sonucu döner.
+ *
+ * Gerçek vaka (2026-09-30): tarama financesonline'da 12 saat takıldı.
+ * Denemeler withSiteTimeout ile sınırlıydı ama sınırın dışındaki bir adım
+ * (sayfa kapatma / headed açma / yeni sekme) dönmedi ve kuyruk durdu.
+ * Kurtarmanın kendisi de sınırlı — o da takılırsa kuyruk yine ilerler.
+ *
+ * Zaman aşımı dışındaki hatalar da (yeniden açılamamış tarayıcıda
+ * "Target closed") kurtarılıp hata sonucuna çevrilir; yeniden fırlatmak
+ * bütün taramayı düşürürdü.
+ */
+export async function guardSite<R>(
+  work: Promise<R>,
+  recover: () => Promise<void>,
+  errorResult: (reason: string) => R,
+  ms: number = SITE_TOTAL_TIMEOUT_MS,
+  recoverMs = 60_000,
+): Promise<R> {
+  try {
+    return await withSiteTimeout(work, async () => undefined, ms);
+  } catch (err) {
+    await withSiteTimeout(recover(), async () => undefined, recoverMs).catch(() => undefined);
+    const message = (err as Error).message ?? String(err);
+    return errorResult(err instanceof SiteTimeoutError ? `${message} (site toplamı)` : message.slice(0, 150));
+  }
+}
+
+/** Promise'i en fazla ms bekler; sonucu ya da hatası önemsiz (kapatma, Sheet yazımı). */
+export async function settleWithin(work: Promise<unknown>, ms: number): Promise<void> {
+  await withSiteTimeout(work, async () => undefined, ms).catch(() => undefined);
+}
+
 /** Form bulunamadı ama sitede başka bir akış var — Sheet notu. */
 export const HINT_REASON = {
   submit_form: 'Hesapsız gönderim formu var (sitenizi gönderin) — ürün bilgisiyle elle/ayrı akışla',
