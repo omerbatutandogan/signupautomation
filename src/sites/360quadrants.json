@@ -83,6 +83,7 @@
     {
       "type": "expect",
       "anyOf": [
+        "a:has-text('Edit Profile')",
         "text=/check your (e-?mail|inbox)/i",
         "text=/verification (e-?mail|link)/i",
         "text=/verify your (e-?mail|account)/i",
@@ -92,7 +93,7 @@
     }
   ],
   "verification": {
-    "mode": "link"
+    "mode": "none"
   },
-  "notes": "ÜLKE SORUNU ÇÖZÜLDÜ (2026-09-23), KAYIT HENÜZ KANITLANMADI. country_name düz metin değil Twitter Typeahead (tt-input + tt-hint çifti). \"Turkey\" YAZMAK yetmiyordu: sunucu \"User country is required\" diyordu çünkü gizli user_data[country_id] boş kalıyordu. ÖLÇÜLDÜ: \"Turk\" yaz → .tt-suggestion \"Turkey (+90)\" çıkıyor → tıkla → country_id=\"145\" doluyor. Bu adım dry-run ile doğrulanamaz (click atlanıyor). Son gerçek denemede submit sonrası ANA SAYFAYA yönlendirdi, hata mesajı YOK ve 360quadrants'tan mail GELMEDİ — kayıt tamamlandı mı belirsiz. expect artık yalnızca gerçek kayıt kanıtı arıyor (mail/doğrulama metni); \"ana sayfaya düştü\" kanıt SAYILMIYOR çünkü Awwwards'ta benzer genel desen yanlış pozitif vermişti. MAİL KONTROL EDİLDİ (2026-09-23, son 12 saat): 360quadrants'tan HİÇ mail gelmedi — kayıt tamamlanmıyor. Ülke alanı çözüldü ama başka bir engel var. SIRADAKİ ADIM: taze limitle gerçek deneme, submit sonrası form yanıtı artifact'tan okunacak (hata gizli elemanda olabilir — alternative.me'deki display:none vakası gibi). phone ZORUNLU (boş bırakılınca kırmızı çerçeve + submit reddi); SMS doğrulaması yok, yalnızca form alanı. company alanı da typeahead ama zorunlu değil."
+  "notes": "HESAP AÇIK (2026-09-30 doğrulandı): ilk gerçek deneme (2026-09-22) hesabı AÇMIŞ. Site kayıttan sonra doğrulama maili GÖNDERMİYOR, otomatik giriş yapıp ana sayfaya yönlendiriyor — sistem bunu 'beklenen içerik görünmedi' sanıp başarısız saymıştı; eski 'kayıt tamamlanmıyor' teşhisi YANLIŞTI. Türetilen v1 şifreyle /signin girişi başarılı: 'Edit Profile' linki yalnızca oturum açıkken görünür (oturumsuz 0), authToken çerezi + localStorage userData. Bu yüzden verification mode:none ve expect'e 'Edit Profile' eklendi (genel 'welcome' deseni değil, oturuma özgü öğe). Yeni expect gerçek kayıtla HENÜZ doğrulanmadı — sonraki ürün kaydında kontrol et. Ülke: Twitter Typeahead — 'Turk' yaz → .tt-suggestion 'Turkey (+90)' tıkla → gizli country_id=145 dolar; dry-run bu tıklamayı atlar. phone ZORUNLU (SMS doğrulaması yok). Giriş: /signin (Enter göndermez, 'Signin' butonu tıklanmalı)."
 }
