@@ -6,6 +6,7 @@
  *   npm run discover -- --limit 20 --headed  # gözlemlemek için
  *   npm run discover -- --site 10words       # tek site yeniden keşif
  *   npm run discover -- --retry-failed       # yalnızca redleri yeniden dene
+ *   npm run discover -- --retry-errors       # yalnızca hataları (açılamayan tarayıcı, zaman aşımı)
  *   npm run discover -- --reset              # ilerlemeyi sıfırla
  *
  * Kesinti olursa data/discovery.json sayesinde kalınan yerden devam eder.
@@ -206,6 +207,7 @@ async function main(): Promise<void> {
   const forceHeaded = args.includes('--headed');
   const reset = args.includes('--reset');
   const retryFailed = args.includes('--retry-failed');
+  const retryErrors = args.includes('--retry-errors');
 
   const progress = reset ? { entries: {} } : await loadProgress();
   if (reset) logger.info('İlerleme sıfırlandı');
@@ -223,7 +225,7 @@ async function main(): Promise<void> {
     if (!row.siteId) return false;
     if (siteFilter) return row.siteId === siteFilter;
 
-    if (!shouldEnqueue(progress.entries[row.siteId]?.outcome, retryFailed)) return false;
+    if (!shouldEnqueue(progress.entries[row.siteId]?.outcome, retryFailed, retryErrors)) return false;
     if (existingConfigs.has(row.siteId)) return false; // config var
     return true;
   });
@@ -363,7 +365,14 @@ async function main(): Promise<void> {
   console.log(`Doğrulamak için: npm run cli -- run-one <siteId> --dry-run\n`);
 }
 
-main().catch((err: unknown) => {
-  console.error('\n❌ Hata:', err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+// İş bitince AÇIKÇA çık. Bekçinin bıraktığı işler (zaman aşımındaki siteler)
+// açık bir bağlantı ya da süresiz bir Google API isteği bırakabiliyor; Node
+// bunları beklerse süreç kapanmaz. Gerçek vaka (2026-10-02): Local sekmesi
+// bittikten sonra süreç 28 saat boşta kaldı, tarama sonraki sekmeye geçemedi.
+// İlerleme her siteden sonra diske yazıldığı için burada çıkmak güvenli.
+main()
+  .then(() => process.exit(0))
+  .catch((err: unknown) => {
+    console.error('\n❌ Hata:', err instanceof Error ? err.message : err);
+    process.exit(1);
+  });

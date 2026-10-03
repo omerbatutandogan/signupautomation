@@ -49,6 +49,17 @@ describe('shouldEnqueue', () => {
     expect(shouldEnqueue('error', true)).toBe(true);
   });
 
+  it('--retry-errors yalnızca HATALARI yeniden alır, "form yok"ları değil', () => {
+    // Gerçek vaka (2026-10-01): High DA Profile'da görünür tarayıcı açılamadı,
+    // 442 site 35 dakikada "hata" geçti. --retry-failed bunlarla birlikte
+    // ~900 "form yok"u da baştan tarardı (saatlerce boşa iş).
+    expect(shouldEnqueue('error', false, true)).toBe(true);
+    expect(shouldEnqueue('no_form', false, true)).toBe(false);
+    expect(shouldEnqueue('submit_form', false, true)).toBe(false);
+    expect(shouldEnqueue('generated', false, true)).toBe(false);
+    expect(shouldEnqueue(undefined, false, true)).toBe(true);
+  });
+
   it('--retry-failed doğrulanmış config’i KORUR', () => {
     // En kritik satır: bu false olmazsa elle düzeltilmiş ontoplist,
     // awwwards gibi config'ler taslakla ezilir.

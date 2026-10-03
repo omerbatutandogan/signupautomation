@@ -119,8 +119,16 @@ export const BOT_REASON = 'Bot koruması (403/challenge) — otomasyon denenmeye
  *
  * @param prior  Daha önceki sonuç; hiç işlenmediyse undefined.
  * @param retryFailed  --retry-failed bayrağı verildi mi.
+ * @param retryErrors  --retry-errors: yalnızca 'error' sonuçlarını yeniden al.
  */
-export function shouldEnqueue(prior: Outcome | undefined, retryFailed: boolean): boolean {
+export function shouldEnqueue(
+  prior: Outcome | undefined,
+  retryFailed: boolean,
+  retryErrors = false,
+): boolean {
   if (!prior) return true; // hiç işlenmemiş
+  // --retry-errors: yalnızca "hata" (tarayıcı açılamadı, zaman aşımı...).
+  // "Form yok" gibi gerçek sonuçlar yeniden taranmaz.
+  if (retryErrors && prior === 'error') return true;
   return retryFailed && RETRYABLE.has(prior);
 }
