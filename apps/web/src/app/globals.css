@@ -81,6 +81,28 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* Veri görselleştirme rolleri (dataviz referans paleti). Büyüklük = tek
+     ton (mavi), açık→koyu. Durum renkleri ayrılmıştır ve hiçbir zaman tek
+     başına anlam taşımaz: yanında ikon + etiket olur. */
+  --viz-series-1: #2a78d6;
+  --viz-track: #cde2fb;
+  --viz-grid: #e1e0d9;
+  --viz-axis: #c3c2b7;
+  --viz-heat-1: #cde2fb;
+  --viz-heat-2: #9ec5f4;
+  --viz-heat-3: #6da7ec;
+  --viz-heat-4: #256abf;
+  --viz-heat-5: #104281;
+  --viz-heat-ink-1: #0b0b0b;
+  --viz-heat-ink-2: #0b0b0b;
+  --viz-heat-ink-3: #0b0b0b;
+  --viz-heat-ink-4: #ffffff;
+  --viz-heat-ink-5: #ffffff;
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
 }
 
 .dark {
@@ -115,6 +137,22 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  /* Koyu yüzeyde "sıfıra yakın" yüzeye doğru çekilir: rampa ters yürür. */
+  --viz-series-1: #3987e5;
+  --viz-track: #0d366b;
+  --viz-grid: #2c2c2a;
+  --viz-axis: #383835;
+  --viz-heat-1: #0d366b;
+  --viz-heat-2: #184f95;
+  --viz-heat-3: #256abf;
+  --viz-heat-4: #5598e7;
+  --viz-heat-5: #9ec5f4;
+  --viz-heat-ink-1: #ffffff;
+  --viz-heat-ink-2: #ffffff;
+  --viz-heat-ink-3: #ffffff;
+  --viz-heat-ink-4: #0b0b0b;
+  --viz-heat-ink-5: #0b0b0b;
 }
 
 @layer base {

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { AutoRefresh } from '@/components/auto-refresh';
 import { NavLinks } from '@/components/nav-links';
 import { requireMember } from '@/lib/auth';
 
@@ -30,7 +31,9 @@ export default async function DashboardLayout({ children }: LayoutProps<'/dashbo
           </form>
         </div>
       </aside>
-      <main className="flex-1 px-8 py-8">{children}</main>
+      <main className="min-w-0 flex-1 px-8 py-8">{children}</main>
+      {/* Senkron 2 dakikada bir çalışır; daha sık tazelemek yalnızca istek harcar. */}
+      <AutoRefresh seconds={120} />
     </div>
   );
 }
