@@ -1,0 +1,98 @@
+{
+  "id": "mapleprimes",
+  "name": "mapleprimes",
+  "risk": "low",
+  "signupUrl": "https://www.mapleprimes.com/register/",
+  "steps": [
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
+    {
+      "type": "dismiss",
+      "selectors": [
+        "button:has-text('Accept')"
+      ],
+      "optional": true
+    },
+    {
+      "type": "waitFor",
+      "selector": "#ctl00_MainContent_MembershipSignUp1_txtEmail",
+      "timeoutMs": 20000
+    },
+    {
+      "type": "humanPause",
+      "minMs": 600,
+      "maxMs": 1600
+    },
+    {
+      "type": "fill",
+      "selector": "#ctl00_MainContent_MembershipSignUp1_txtEmail",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "#ctl00_MainContent_MembershipSignUp1_txtUsername",
+      "field": "username",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#ctl00_MainContent_MembershipSignUp1_txtPassword",
+      "field": "password"
+    },
+    {
+      "type": "fill",
+      "selector": "#ctl00_MainContent_MembershipSignUp1_txtVerifyPassword",
+      "field": "password"
+    },
+    {
+      "type": "fill",
+      "selector": "#ctl00_MainContent_MembershipSignUp1_txtFirstName",
+      "field": "firstName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#ctl00_MainContent_MembershipSignUp1_txtLastName",
+      "field": "lastName",
+      "optional": true
+    },
+    {
+      "type": "click",
+      "selector": "label[for='chkTerms']",
+      "optional": true
+    },
+    {
+      "type": "captchaGate"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 500,
+      "maxMs": 1200
+    },
+    {
+      "type": "click",
+      "selector": "button[type='submit']"
+    },
+    {
+      "type": "expect",
+      "anyOf": [
+        "text=/check your (e-?mail|inbox)/i",
+        "text=/verify your (e-?mail|account)/i",
+        "text=/verification (e-?mail|link|message)/i",
+        "text=/confirmation (e-?mail|link) (has been )?sent/i",
+        "text=/we('ve| have) sent you/i",
+        "text=/activate your account/i",
+        "text=/account (has been )?created/i",
+        "text=/registration (successful|complete)/i"
+      ],
+      "timeoutMs": 25000
+    }
+  ],
+  "verification": {
+    "mode": "link",
+    "timeoutMs": 180000
+  },
+  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. Uyarılar: GÖRÜNMEZ ZORUNLU ALAN (label[for=...] tıklaması gerekebilir): #userModelEmail, #userModelPass"
+}

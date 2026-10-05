@@ -1,0 +1,104 @@
+{
+  "id": "mediapost",
+  "name": "mediapost",
+  "risk": "low",
+  "signupUrl": "https://www.mediapost.com/register/",
+  "steps": [
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
+    {
+      "type": "waitFor",
+      "selector": "#id_user-email",
+      "timeoutMs": 20000
+    },
+    {
+      "type": "humanPause",
+      "minMs": 600,
+      "maxMs": 1600
+    },
+    {
+      "type": "fill",
+      "selector": "#id_user-email",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "#id_user-password1",
+      "field": "password"
+    },
+    {
+      "type": "fill",
+      "selector": "#id_user-password2",
+      "field": "password"
+    },
+    {
+      "type": "fill",
+      "selector": "#id_user-first_name",
+      "field": "firstName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#id_user-last_name",
+      "field": "lastName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#id_userextra-company",
+      "field": "companyName",
+      "optional": true
+    },
+    {
+      "type": "select",
+      "selector": "#id_userextra-company_category",
+      "field": "companyName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#id_userextra-title",
+      "field": "role",
+      "optional": true
+    },
+    {
+      "type": "select",
+      "selector": "#id_userextra-title_category",
+      "field": "category",
+      "optional": true
+    },
+    {
+      "type": "captchaGate"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 500,
+      "maxMs": 1200
+    },
+    {
+      "type": "click",
+      "selector": "#continue"
+    },
+    {
+      "type": "expect",
+      "anyOf": [
+        "text=/check your (e-?mail|inbox)/i",
+        "text=/verify your (e-?mail|account)/i",
+        "text=/verification (e-?mail|link|message)/i",
+        "text=/confirmation (e-?mail|link) (has been )?sent/i",
+        "text=/we('ve| have) sent you/i",
+        "text=/activate your account/i",
+        "text=/account (has been )?created/i",
+        "text=/registration (successful|complete)/i"
+      ],
+      "timeoutMs": 25000
+    }
+  ],
+  "verification": {
+    "mode": "link",
+    "timeoutMs": 180000
+  },
+  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: direct-path, 0 sıçrama, güven: high. Captcha: recaptcha_v2. TODO eşlenmeyen zorunlu alanlar: #id_address-zip (zorunlu, text), #id_address-country (zorunlu, select-one). Uyarılar: Captcha tespit edildi: recaptcha_v2"
+}

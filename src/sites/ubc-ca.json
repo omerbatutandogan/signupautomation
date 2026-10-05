@@ -1,0 +1,73 @@
+{
+  "id": "ubc-ca",
+  "name": "ubc-ca",
+  "risk": "low",
+  "signupUrl": "https://forums.botanicalgarden.ubc.ca/register",
+  "steps": [
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
+    {
+      "type": "waitFor",
+      "selector": "#ctrl_6ac2c4e3d981cdf2031fd995ca0e0f58",
+      "timeoutMs": 20000
+    },
+    {
+      "type": "humanPause",
+      "minMs": 600,
+      "maxMs": 1600
+    },
+    {
+      "type": "fill",
+      "selector": "#ctrl_6ac2c4e3d981cdf2031fd995ca0e0f58",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "#ctrl_e259e152ea305d35b3621bba824f9da5",
+      "field": "password"
+    },
+    {
+      "type": "fill",
+      "selector": "#ctrl_d2c2efaefc1bafa8d6711352fc7da35c",
+      "field": "password"
+    },
+    {
+      "type": "click",
+      "selector": "label[for='ctrl_agree']",
+      "optional": true
+    },
+    {
+      "type": "captchaGate"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 500,
+      "maxMs": 1200
+    },
+    {
+      "type": "click",
+      "selector": "#SubmitButton"
+    },
+    {
+      "type": "expect",
+      "anyOf": [
+        "text=/check your (e-?mail|inbox)/i",
+        "text=/verify your (e-?mail|account)/i",
+        "text=/verification (e-?mail|link|message)/i",
+        "text=/confirmation (e-?mail|link) (has been )?sent/i",
+        "text=/we('ve| have) sent you/i",
+        "text=/activate your account/i",
+        "text=/account (has been )?created/i",
+        "text=/registration (successful|complete)/i"
+      ],
+      "timeoutMs": 25000
+    }
+  ],
+  "verification": {
+    "mode": "link",
+    "timeoutMs": 180000
+  },
+  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi."
+}

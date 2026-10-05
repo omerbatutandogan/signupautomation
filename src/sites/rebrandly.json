@@ -1,0 +1,69 @@
+{
+  "id": "rebrandly",
+  "name": "rebrandly",
+  "risk": "low",
+  "signupUrl": "https://oauth.rebrandly.com/signup?redirectUrl=%2Fconnect%2Fauthorize%2Fcallback%3Fclient_id%3D6681D084-FAA9-4BEE-A601-7D8B092802F2%26redirect_uri%3Dhttps%253A%252F%252Fapp.rebrandly.com%26state%3DeyJwYXRoIjoiL3NldHVwIiwiY2xpZW50X2lkIjoiNjY4MUQwODQtRkFBOS00QkVFLUE2MDEtN0Q4QjA5MjgwMkYyIiwic2VhcmNoIjoiP3A9Zmlyc3Rsb2dpbiJ9%26response_type%3Dcode%26acr_values%3Dregister%2520cmd%253Adirect%2520flow%253Auser%2520plan%253A542f6d07ca4c485ca47fadba319bc21c%26scope%3Drbapi%2520offline_access%2520rbapikeys%2520rbinvites%2520rbdowngrade",
+  "steps": [
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
+    {
+      "type": "waitFor",
+      "selector": "#Email",
+      "timeoutMs": 20000
+    },
+    {
+      "type": "humanPause",
+      "minMs": 600,
+      "maxMs": 1600
+    },
+    {
+      "type": "fill",
+      "selector": "#FullName",
+      "field": "fullName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#Email",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "#Password",
+      "field": "password"
+    },
+    {
+      "type": "captchaGate"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 500,
+      "maxMs": 1200
+    },
+    {
+      "type": "click",
+      "selector": "button:has-text('Sign up')"
+    },
+    {
+      "type": "expect",
+      "anyOf": [
+        "text=/check your (e-?mail|inbox)/i",
+        "text=/verify your (e-?mail|account)/i",
+        "text=/verification (e-?mail|link|message)/i",
+        "text=/confirmation (e-?mail|link) (has been )?sent/i",
+        "text=/we('ve| have) sent you/i",
+        "text=/activate your account/i",
+        "text=/account (has been )?created/i",
+        "text=/registration (successful|complete)/i"
+      ],
+      "timeoutMs": 25000
+    }
+  ],
+  "verification": {
+    "mode": "link",
+    "timeoutMs": 180000
+  },
+  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: link-follow, 2 sıçrama, güven: high. Captcha: recaptcha_v2. Uyarılar: Captcha tespit edildi: recaptcha_v2"
+}

@@ -1,0 +1,74 @@
+{
+  "id": "hobbytalk",
+  "name": "hobbytalk",
+  "risk": "low",
+  "signupUrl": "https://www.hobbytalk.com/register",
+  "steps": [
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
+    {
+      "type": "waitFor",
+      "selector": "#_xfUid-4-1790866051",
+      "timeoutMs": 20000
+    },
+    {
+      "type": "humanPause",
+      "minMs": 600,
+      "maxMs": 1600
+    },
+    {
+      "type": "fill",
+      "selector": "#_xfUid-3-1790866051",
+      "field": "username",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#_xfUid-4-1790866051",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "#_xfUid-5-1790866051",
+      "field": "password"
+    },
+    {
+      "type": "check",
+      "selector": "input[name='accept']",
+      "optional": true
+    },
+    {
+      "type": "captchaGate"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 500,
+      "maxMs": 1200
+    },
+    {
+      "type": "click",
+      "selector": "button:has-text('Sign up')"
+    },
+    {
+      "type": "expect",
+      "anyOf": [
+        "text=/check your (e-?mail|inbox)/i",
+        "text=/verify your (e-?mail|account)/i",
+        "text=/verification (e-?mail|link|message)/i",
+        "text=/confirmation (e-?mail|link) (has been )?sent/i",
+        "text=/we('ve| have) sent you/i",
+        "text=/activate your account/i",
+        "text=/account (has been )?created/i",
+        "text=/registration (successful|complete)/i"
+      ],
+      "timeoutMs": 25000
+    }
+  ],
+  "verification": {
+    "mode": "link",
+    "timeoutMs": 180000
+  },
+  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: direct-path, 0 sıçrama, güven: high. Captcha: recaptcha_v2. Uyarılar: Captcha tespit edildi: recaptcha_v2"
+}

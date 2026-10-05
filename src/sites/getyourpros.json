@@ -1,0 +1,63 @@
+{
+  "id": "getyourpros",
+  "name": "getyourpros",
+  "risk": "low",
+  "signupUrl": "https://www.getyourpros.com/login?login_direct_url=/account/register",
+  "steps": [
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
+    {
+      "type": "waitFor",
+      "selector": "#member_login_190-element-10",
+      "timeoutMs": 20000
+    },
+    {
+      "type": "humanPause",
+      "minMs": 600,
+      "maxMs": 1600
+    },
+    {
+      "type": "fill",
+      "selector": "#member_login_190-element-10",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "#member_login_190-element-11",
+      "field": "password"
+    },
+    {
+      "type": "captchaGate"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 500,
+      "maxMs": 1200
+    },
+    {
+      "type": "click",
+      "selector": "#togglePassword"
+    },
+    {
+      "type": "expect",
+      "anyOf": [
+        "text=/check your (e-?mail|inbox)/i",
+        "text=/verify your (e-?mail|account)/i",
+        "text=/verification (e-?mail|link|message)/i",
+        "text=/confirmation (e-?mail|link) (has been )?sent/i",
+        "text=/we('ve| have) sent you/i",
+        "text=/activate your account/i",
+        "text=/account (has been )?created/i",
+        "text=/registration (successful|complete)/i"
+      ],
+      "timeoutMs": 25000
+    }
+  ],
+  "verification": {
+    "mode": "link",
+    "timeoutMs": 180000
+  },
+  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: direct-path, 0 sıçrama, güven: high. Captcha: recaptcha_v2. Uyarılar: Captcha tespit edildi: recaptcha_v2 | GÖRÜNMEZ ZORUNLU ALAN (label[for=...] tıklaması gerekebilir): #member_login_190-1-element-10, #member_login_190-1-element-11, #newsletter_modal_signup_380-element-9, input[name='consent_history[1]']"
+}

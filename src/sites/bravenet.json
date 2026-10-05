@@ -1,0 +1,88 @@
+{
+  "id": "bravenet",
+  "name": "bravenet",
+  "risk": "low",
+  "signupUrl": "https://bravenet.com/register/",
+  "steps": [
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
+    {
+      "type": "dismiss",
+      "selectors": [
+        "button:has-text('Accept all')",
+        "button:has-text('Accept')"
+      ],
+      "optional": true
+    },
+    {
+      "type": "waitFor",
+      "selector": "#email",
+      "timeoutMs": 20000
+    },
+    {
+      "type": "humanPause",
+      "minMs": 600,
+      "maxMs": 1600
+    },
+    {
+      "type": "fill",
+      "selector": "#full_name",
+      "field": "fullName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#email",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "#username",
+      "field": "username",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#password",
+      "field": "password"
+    },
+    {
+      "type": "fill",
+      "selector": "#password_validation",
+      "field": "password"
+    },
+    {
+      "type": "captchaGate"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 500,
+      "maxMs": 1200
+    },
+    {
+      "type": "click",
+      "selector": "button:has-text('Create Account')"
+    },
+    {
+      "type": "expect",
+      "anyOf": [
+        "text=/check your (e-?mail|inbox)/i",
+        "text=/verify your (e-?mail|account)/i",
+        "text=/verification (e-?mail|link|message)/i",
+        "text=/confirmation (e-?mail|link) (has been )?sent/i",
+        "text=/we('ve| have) sent you/i",
+        "text=/activate your account/i",
+        "text=/account (has been )?created/i",
+        "text=/registration (successful|complete)/i"
+      ],
+      "timeoutMs": 25000
+    }
+  ],
+  "verification": {
+    "mode": "link",
+    "timeoutMs": 180000
+  },
+  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. TODO eşlenmeyen zorunlu alanlar: #altcha_checkbox_56938376 (zorunlu, checkbox)."
+}

@@ -1,0 +1,71 @@
+{
+  "id": "steinberg",
+  "name": "steinberg",
+  "risk": "low",
+  "signupUrl": "https://signin.steinberg.net/?goto=https%3A%2F%2Fiam.steinberg.net%3A443%2Fam%2Foauth2%2Fauthorize%3Fresponse_type%3Dcode%26client_id%3Dself-service%26scope%3Dopenid%2520email%2520profile%2520newsletter%2520address%2520client-access-gateway%2520fr%3Aidm%3A*%26state%3DE4ithwF4NIVsYKHXcyJHyM69wMzwuNaJXiVpG5cVZb0%253D%26redirect_uri%3Dhttps%3A%2F%2Faccount.steinberg.net%2Flogin%2Foauth2%2Fcode%2Fforgerock%26nonce%3DS-qtdzYRc9RvbA1zBRGpkk5nyeNV-gPu65jXAEFFaBA%26code_challenge%3DfyPrvnKECgIdAer--dYstkw_Oz48ksDv8xJ6EDKw07Y%26code_challenge_method%3DS256&realm=/alpha#/",
+  "steps": [
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
+    {
+      "type": "dismiss",
+      "selectors": [
+        "button:has-text('Accept all')",
+        "button:has-text('Accept')"
+      ],
+      "optional": true
+    },
+    {
+      "type": "waitFor",
+      "selector": "#emailCallback",
+      "timeoutMs": 20000
+    },
+    {
+      "type": "humanPause",
+      "minMs": 600,
+      "maxMs": 1600
+    },
+    {
+      "type": "fill",
+      "selector": "#emailCallback",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "#passwordCallback",
+      "field": "password"
+    },
+    {
+      "type": "captchaGate"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 500,
+      "maxMs": 1200
+    },
+    {
+      "type": "click",
+      "selector": "#revealButton"
+    },
+    {
+      "type": "expect",
+      "anyOf": [
+        "text=/check your (e-?mail|inbox)/i",
+        "text=/verify your (e-?mail|account)/i",
+        "text=/verification (e-?mail|link|message)/i",
+        "text=/confirmation (e-?mail|link) (has been )?sent/i",
+        "text=/we('ve| have) sent you/i",
+        "text=/activate your account/i",
+        "text=/account (has been )?created/i",
+        "text=/registration (successful|complete)/i"
+      ],
+      "timeoutMs": 25000
+    }
+  ],
+  "verification": {
+    "mode": "link",
+    "timeoutMs": 180000
+  },
+  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi."
+}

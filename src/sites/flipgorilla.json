@@ -1,0 +1,85 @@
+{
+  "id": "flipgorilla",
+  "name": "flipgorilla",
+  "risk": "low",
+  "signupUrl": "https://flipgorilla.com/registration/profile/new",
+  "steps": [
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
+    {
+      "type": "waitFor",
+      "selector": "#registration_email",
+      "timeoutMs": 20000
+    },
+    {
+      "type": "humanPause",
+      "minMs": 600,
+      "maxMs": 1600
+    },
+    {
+      "type": "fill",
+      "selector": "#registration_firstName",
+      "field": "firstName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#registration_lastName",
+      "field": "lastName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#registration_email",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "#registration_plainPassword_first",
+      "field": "password"
+    },
+    {
+      "type": "fill",
+      "selector": "#registration_plainPassword_second",
+      "field": "password"
+    },
+    {
+      "type": "click",
+      "selector": "label[for='registration_isAcceptingTOS']",
+      "optional": true
+    },
+    {
+      "type": "captchaGate"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 500,
+      "maxMs": 1200
+    },
+    {
+      "type": "click",
+      "selector": "button:has-text('Agree and continue')"
+    },
+    {
+      "type": "expect",
+      "anyOf": [
+        "text=/check your (e-?mail|inbox)/i",
+        "text=/verify your (e-?mail|account)/i",
+        "text=/verification (e-?mail|link|message)/i",
+        "text=/confirmation (e-?mail|link) (has been )?sent/i",
+        "text=/we('ve| have) sent you/i",
+        "text=/activate your account/i",
+        "text=/account (has been )?created/i",
+        "text=/registration (successful|complete)/i"
+      ],
+      "timeoutMs": 25000
+    }
+  ],
+  "verification": {
+    "mode": "link",
+    "timeoutMs": 180000
+  },
+  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: link-follow, 1 sıçrama, güven: high. Captcha: recaptcha_v2. TODO eşlenmeyen zorunlu alanlar: #registration_gender_0 (zorunlu, radio), #registration_gender_1 (zorunlu, radio). Uyarılar: Captcha tespit edildi: recaptcha_v2"
+}

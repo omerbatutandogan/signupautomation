@@ -1,0 +1,141 @@
+{
+  "id": "creativemornings",
+  "name": "creativemornings",
+  "risk": "low",
+  "signupUrl": "https://creativemornings.com/signup",
+  "steps": [
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
+    {
+      "type": "waitFor",
+      "selector": "#user_email",
+      "timeoutMs": 20000
+    },
+    {
+      "type": "humanPause",
+      "minMs": 600,
+      "maxMs": 1600
+    },
+    {
+      "type": "fill",
+      "selector": "#user_firstname",
+      "field": "firstName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#user_lastname",
+      "field": "lastName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#user_email",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "#user_username",
+      "field": "username",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#user_password",
+      "field": "password"
+    },
+    {
+      "type": "fill",
+      "selector": "#user_job_title",
+      "field": "role",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#user_twitter_username",
+      "field": "username",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#user_facebook_username",
+      "field": "username",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#user_instagram_username",
+      "field": "username",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#user_linkedin_username",
+      "field": "username",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#user_substack_username",
+      "field": "username",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#user_url_1",
+      "field": "website",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#user_url_2",
+      "field": "website",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#user_url_3",
+      "field": "website",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#user_url_4",
+      "field": "website",
+      "optional": true
+    },
+    {
+      "type": "captchaGate"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 500,
+      "maxMs": 1200
+    },
+    {
+      "type": "click",
+      "selector": "button[type='submit']"
+    },
+    {
+      "type": "expect",
+      "anyOf": [
+        "text=/check your (e-?mail|inbox)/i",
+        "text=/verify your (e-?mail|account)/i",
+        "text=/verification (e-?mail|link|message)/i",
+        "text=/confirmation (e-?mail|link) (has been )?sent/i",
+        "text=/we('ve| have) sent you/i",
+        "text=/activate your account/i",
+        "text=/account (has been )?created/i",
+        "text=/registration (successful|complete)/i"
+      ],
+      "timeoutMs": 25000
+    }
+  ],
+  "verification": {
+    "mode": "link",
+    "timeoutMs": 180000
+  },
+  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: direct-path, 0 sıçrama, güven: high. Captcha: recaptcha_v2. TODO eşlenmeyen zorunlu alanlar: #user_location (zorunlu, text). Uyarılar: Captcha tespit edildi: recaptcha_v2"
+}

@@ -1,0 +1,90 @@
+{
+  "id": "forumfree-it",
+  "name": "forumfree-it",
+  "risk": "low",
+  "signupUrl": "https://accounts.forumfree.it/?act=Reg&cid=1001709",
+  "steps": [
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
+    {
+      "type": "waitFor",
+      "selector": "#email-reg",
+      "timeoutMs": 20000
+    },
+    {
+      "type": "humanPause",
+      "minMs": 600,
+      "maxMs": 1600
+    },
+    {
+      "type": "fill",
+      "selector": "#email-reg",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "#user-reg",
+      "field": "username",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#pass-reg",
+      "field": "password"
+    },
+    {
+      "type": "fill",
+      "selector": "#user-login",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "#pass-login",
+      "field": "password"
+    },
+    {
+      "type": "fill",
+      "selector": "#email-rec",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "#user-rec",
+      "field": "username",
+      "optional": true
+    },
+    {
+      "type": "captchaGate"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 500,
+      "maxMs": 1200
+    },
+    {
+      "type": "click",
+      "selector": "button[type='submit']"
+    },
+    {
+      "type": "expect",
+      "anyOf": [
+        "text=/check your (e-?mail|inbox)/i",
+        "text=/verify your (e-?mail|account)/i",
+        "text=/verification (e-?mail|link|message)/i",
+        "text=/confirmation (e-?mail|link) (has been )?sent/i",
+        "text=/we('ve| have) sent you/i",
+        "text=/activate your account/i",
+        "text=/account (has been )?created/i",
+        "text=/registration (successful|complete)/i"
+      ],
+      "timeoutMs": 25000
+    }
+  ],
+  "verification": {
+    "mode": "link",
+    "timeoutMs": 180000
+  },
+  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: link-follow, 1 sıçrama, güven: high. Captcha: turnstile. Uyarılar: Captcha tespit edildi: turnstile | GÖRÜNMEZ ZORUNLU ALAN (label[for=...] tıklaması gerekebilir): input[name='agree1'], input[name='agree2']"
+}

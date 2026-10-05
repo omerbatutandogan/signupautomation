@@ -1,0 +1,80 @@
+{
+  "id": "openphotographyforums",
+  "name": "openphotographyforums",
+  "risk": "low",
+  "signupUrl": "https://openphotographyforums.com/forums/register/",
+  "steps": [
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
+    {
+      "type": "waitFor",
+      "selector": "#_xfUid-5-1790867452",
+      "timeoutMs": 20000
+    },
+    {
+      "type": "humanPause",
+      "minMs": 600,
+      "maxMs": 1600
+    },
+    {
+      "type": "fill",
+      "selector": "#_xfUid-5-1790867452",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "#_xfUid-6-1790867452",
+      "field": "password"
+    },
+    {
+      "type": "fill",
+      "selector": "#_xfUid-9-1790867452",
+      "field": "firstName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#_xfUid-10-1790867452",
+      "field": "lastName",
+      "optional": true
+    },
+    {
+      "type": "check",
+      "selector": "input[name='accept']",
+      "optional": true
+    },
+    {
+      "type": "captchaGate"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 500,
+      "maxMs": 1200
+    },
+    {
+      "type": "click",
+      "selector": "#js-signUpButton"
+    },
+    {
+      "type": "expect",
+      "anyOf": [
+        "text=/check your (e-?mail|inbox)/i",
+        "text=/verify your (e-?mail|account)/i",
+        "text=/verification (e-?mail|link|message)/i",
+        "text=/confirmation (e-?mail|link) (has been )?sent/i",
+        "text=/we('ve| have) sent you/i",
+        "text=/activate your account/i",
+        "text=/account (has been )?created/i",
+        "text=/registration (successful|complete)/i"
+      ],
+      "timeoutMs": 25000
+    }
+  ],
+  "verification": {
+    "mode": "link",
+    "timeoutMs": 180000
+  },
+  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: link-follow, 1 sıçrama, güven: high. Captcha görülmedi. TODO eşlenmeyen zorunlu alanlar: #_xfUid-4-1790867452 (zorunlu, text), #_xfUid-8-1790867452 (zorunlu, text), #_xfUid-11-1790867452 (zorunlu, text)."
+}
