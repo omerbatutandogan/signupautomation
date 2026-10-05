@@ -1,48 +1,18 @@
 /**
- * Uçtan uca giriş/erişim testi — yerel Supabase + çalışan panel gerekir.
- *
- *   npx supabase start                      (repo kökünde)
- *   npm run build -w apps/web && npm run start -w apps/web
- *   npm run e2e -w apps/web
- *
- * Google girişi yerelde denenemiyor (OAuth istemcisi gerekir); oturum aynı
- * @supabase/ssr çerezleriyle e-posta/şifre üzerinden kuruluyor. Kanca,
- * proxy, DAL (is_member) ve RLS yolu Google girişiyle birebir aynı.
+ * Uçtan uca giriş/erişim testi — yerel Supabase + çalışan panel gerekir
+ * (kurulum: e2e/local.ts).
  */
 
 import { strict as assert } from 'node:assert';
-import { execSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-import { createServerClient } from '@supabase/ssr';
-import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
-
-const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
-const base = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
-
-const status = JSON.parse(
-  execSync('npx supabase@2.119.0 status -o json', { cwd: repoRoot, stdio: ['ignore', 'pipe', 'ignore'] }).toString(),
-) as { API_URL: string; PUBLISHABLE_KEY: string; SECRET_KEY: string };
-
-const admin = createClient(status.API_URL, status.SECRET_KEY, { auth: { persistSession: false } });
-const anon = createClient(status.API_URL, status.PUBLISHABLE_KEY, { auth: { persistSession: false } });
+import { addSession, admin, anon, base, removeUsers, sessionCookies, step } from './local';
 
 const stamp = Date.now();
 const member = `e2e-member-${stamp}@test.local`;
 const outsider = `e2e-outsider-${stamp}@test.local`;
 const password = `E2e-${stamp}-pw!`;
 
-function step(name: string) {
-  console.log(`✓ ${name}`);
-}
-
-async function cleanup() {
-  const { data } = await admin.auth.admin.listUsers({ perPage: 1000 });
-  for (const u of data?.users ?? []) {
-    if (u.email === member || u.email === outsider) await admin.auth.admin.deleteUser(u.id);
-  }
-  await admin.from('allowed_emails').delete().in('email', [member, outsider]);
-}
+const cleanup = () => removeUsers([member, outsider]);
 
 async function main() {
   await cleanup();
@@ -65,18 +35,7 @@ async function main() {
   step('izinli e-posta kaydoldu');
 
   // 3. Oturum çerezleri — tarayıcının alacağı @supabase/ssr çerezlerinin aynısı.
-  const jar = new Map<string, string>();
-  const ssr = createServerClient(status.API_URL, status.PUBLISHABLE_KEY, {
-    cookies: {
-      getAll: () => [...jar].map(([name, value]) => ({ name, value })),
-      setAll: (cookies) => {
-        for (const c of cookies) jar.set(c.name, c.value);
-      },
-    },
-  });
-  const signIn = await ssr.auth.signInWithPassword({ email: member, password });
-  assert.equal(signIn.error, null, `giriş başarısız: ${signIn.error?.message}`);
-  assert.ok(jar.size > 0, 'oturum çerezi yazılmadı');
+  const jar = await sessionCookies(member, password);
 
   const browser = await chromium.launch({ headless: true });
   try {
@@ -89,8 +48,7 @@ async function main() {
 
     // 5. İzinli oturum → dashboard.
     const ctx = await browser.newContext();
-    const host = new URL(base).hostname;
-    await ctx.addCookies([...jar].map(([name, value]) => ({ name, value, domain: host, path: '/', sameSite: 'Lax' as const })));
+    await addSession(ctx, jar);
     const page = await ctx.newPage();
     await page.goto(`${base}/dashboard`);
     assert.match(page.url(), /\/dashboard$/, `dashboard açılmadı: ${page.url()}`);
@@ -104,8 +62,33 @@ async function main() {
     step('giriş yapmışken /login, next adresine yönlendi');
 
     // 7. İzin kaldırılınca bir sonraki istekte erişim kesilir (JWT hâlâ geçerli).
+    await page.goto(`${base}/dashboard`);
     const revoke = await admin.from('allowed_emails').update({ revoked_at: new Date().toISOString() }).eq('email', member);
     assert.equal(revoke.error, null);
+    // Önce İSTEMCİ TARAFI gezinme: layout yeniden render edilmez, üyeliği
+    // sayfanın kendisi kontrol etmeli. Bir sayfa requireMember()'ı unutursa
+    // tam sayfa yüklemesi (layout) bunu gizlerdi; menü tıklaması gizlemez.
+    for (const [link, path] of [
+      ['Scan map', 'scan'],
+      ['Accounts', 'accounts'],
+      ['Queue', 'queue'],
+      ['Products', 'products'],
+      ['Overview', ''],
+    ] as const) {
+      await page.goto(`${base}/not-allowed`);
+      const restore = await admin.from('allowed_emails').update({ revoked_at: null }).eq('email', member);
+      assert.equal(restore.error, null);
+      // Üyeyken başka bir sayfadan başla (layout bu sırada render edilir)…
+      await page.goto(`${base}/dashboard${path === '' ? '/scan' : ''}`);
+      const again = await admin.from('allowed_emails').update({ revoked_at: new Date().toISOString() }).eq('email', member);
+      assert.equal(again.error, null);
+      // …izin kalkınca menüden hedef sayfaya geç.
+      await page.getByRole('navigation').getByRole('link', { name: link, exact: true }).click();
+      await page.waitForURL(/\/not-allowed$/, { timeout: 10_000 }).catch(() => {
+        throw new Error(`"${link}" sayfası istemci tarafı gezinmede üyeliği kontrol etmiyor (adres: ${page.url()})`);
+      });
+    }
+    step('izin kaldırılınca menüden geçilen beş sayfa da erişimi kesti (istemci tarafı gezinme)');
     await page.goto(`${base}/dashboard`);
     assert.match(page.url(), /\/not-allowed$/, `iptal sonrası erişim kesilmedi: ${page.url()}`);
     step('izin kaldırılınca dashboard erişimi kesildi');

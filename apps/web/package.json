@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
-    "e2e": "tsx e2e/auth-flow.e2e.ts"
+    "e2e": "tsx e2e/auth-flow.e2e.ts && tsx e2e/pages.e2e.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
