@@ -1,0 +1,79 @@
+{
+  "id": "toolfinder",
+  "name": "Tool Finder",
+  "risk": "low",
+  "signupUrl": "https://toolfinder.com/sign-up?next=%2Findex",
+  "steps": [
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
+    {
+      "type": "waitFor",
+      "selector": "#signup-email",
+      "timeoutMs": 20000
+    },
+    {
+      "type": "humanPause",
+      "minMs": 600,
+      "maxMs": 1600
+    },
+    {
+      "type": "fill",
+      "selector": "#signup-name",
+      "field": "lastName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#signup-email",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "#signup-password",
+      "field": "password"
+    },
+    {
+      "type": "click",
+      "selector": "label[for='signup-terms']",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "input[name='EMAIL']",
+      "field": "email"
+    },
+    {
+      "type": "captchaGate"
+    },
+    {
+      "type": "humanPause",
+      "minMs": 500,
+      "maxMs": 1200
+    },
+    {
+      "type": "click",
+      "selector": "button:has-text('Continue with Google')"
+    },
+    {
+      "type": "expect",
+      "anyOf": [
+        "text=/check your (e-?mail|inbox)/i",
+        "text=/verify your (e-?mail|account)/i",
+        "text=/verification (e-?mail|link|message)/i",
+        "text=/confirmation (e-?mail|link) (has been )?sent/i",
+        "text=/we('ve| have) sent you/i",
+        "text=/activate your account/i",
+        "text=/account (has been )?created/i",
+        "text=/registration (successful|complete)/i"
+      ],
+      "timeoutMs": 25000
+    }
+  ],
+  "verification": {
+    "mode": "link",
+    "timeoutMs": 180000
+  },
+  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı TAŞINMA ONAYI BEKLİYOR Keşif: link-follow, 1 sıçrama, güven: high. Captcha görülmedi. Uyarılar: Site taşınmış: toolfinder.co → toolfinder.com — kaydın doğru sitede olduğunu kontrol et"
+}
