@@ -22,7 +22,8 @@
     "record": "tsx scripts/record.ts",
     "discover": "tsx scripts/discover.ts",
     "panel:sync": "tsx scripts/sync-panel.ts",
-    "panel:sync-agent": "bash scripts/panel-sync-agent.sh"
+    "panel:sync-agent": "bash scripts/panel-sync-agent.sh",
+    "db:types": "npx supabase@2.119.0 gen types typescript --local --schema public > apps/web/src/lib/supabase/database.types.ts && npx --yes oxfmt@0.71.0 apps/web/src/lib/supabase/database.types.ts"
   },
   "dependencies": {
     "@googleapis/gmail": "^22.0.0",
