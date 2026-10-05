@@ -37,3 +37,6 @@ logs/
 # OS
 .DS_Store
 data/ledger.sqlite.bak
+
+# Panel senkronunun yerel önbelleği ve günlükleri
+.panel-sync/

@@ -21,7 +21,8 @@
     "sheet:import": "tsx scripts/import-sheet.ts",
     "record": "tsx scripts/record.ts",
     "discover": "tsx scripts/discover.ts",
-    "panel:sync": "tsx scripts/sync-panel.ts"
+    "panel:sync": "tsx scripts/sync-panel.ts",
+    "panel:sync-agent": "bash scripts/panel-sync-agent.sh"
   },
   "dependencies": {
     "@googleapis/gmail": "^22.0.0",
