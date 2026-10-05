@@ -41,7 +41,7 @@ const LOG_DIR = `${OUT_DIR}/logs`;
 const PROGRESS = `${OUT_DIR}/progress.json`;
 const STOP_FILE = `${OUT_DIR}/STOP`;
 const PROFILE_ROOT = 'data/profiles';
-/** Boş disk bunun altına inerse dur: artifact'lar ve tarayıcı önbelleği sistemi boğmasın. */
+/** Boş disk bunun altındayken yeni site başlatma: artifact'lar ve tarayıcı önbelleği sistemi boğmasın. */
 const MIN_FREE_BYTES = 3 * 1024 ** 3;
 
 const args = process.argv.slice(2);
@@ -241,8 +241,20 @@ async function main(): Promise<number> {
       console.log('\nSTOP dosyası bulundu — duruyor.');
       break;
     }
-    if (freeBytes() < MIN_FREE_BYTES) {
-      console.log(`\n⚠️  Boş disk ${(freeBytes() / 1024 ** 3).toFixed(1)} GB'ın altında (eşik ${MIN_FREE_BYTES / 1024 ** 3} GB) — duruyor.`);
+    // Disk azsa ÇIKMA, bekle: başka süreçler (ör. bir sanal makinenin geçici bellek
+    // dosyaları) boş alanı GB'larca iner çıkar; kalıcı doluluk ise STOP ile durdurulur.
+    // Beklerken bu betik disk kullanmaz, yani kendi payı sıfırdır.
+    let warned = false;
+    while (freeBytes() < MIN_FREE_BYTES && !existsSync(STOP_FILE)) {
+      if (!warned) {
+        console.log(`\n⚠️  Boş disk ${(freeBytes() / 1024 ** 3).toFixed(1)} GB (eşik ${MIN_FREE_BYTES / 1024 ** 3} GB) — disk açılana kadar bekliyor (durdurmak için STOP dosyası).`);
+        warned = true;
+      }
+      await sleep(120_000);
+    }
+    if (warned) console.log(`   Disk açıldı (${(freeBytes() / 1024 ** 3).toFixed(1)} GB) — devam.`);
+    if (existsSync(STOP_FILE)) {
+      console.log('\nSTOP dosyası bulundu — duruyor.');
       break;
     }
 
