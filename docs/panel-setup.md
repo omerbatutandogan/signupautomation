@@ -18,8 +18,8 @@ Sıra önemli: **1 → 2 → 3 → 4**. Her adımın sonunda bana vermen gereken
    - Database password: güçlü bir şifre üret, **1Password'e kaydet**.
 3. Her proje için: **Project Settings → API Keys** sayfası.
    - **Publishable key** (`sb_publishable_…`) → Bana ver.
-   - **Secret key** (`sb_secret_…`) → bana VERME, şimdilik gerekmiyor (işçi aşamasında
-     yalnızca Mac'teki `.env`'e girecek; Vercel'e asla girmeyecek).
+   - **Secret key** (`sb_secret_…`) → bana VERME. 6. adımda kendin yalnızca bu
+     Mac'teki bir dosyaya yazacaksın; Vercel'e asla girmeyecek.
 4. Proje adresi: Project Settings → General → **Project URL**
    (`https://<ref>.supabase.co`) → Bana ver.
 5. Prompt'a yaz: `! npx supabase login` (tarayıcıda onay). Böylece veritabanı
@@ -77,6 +77,71 @@ Gmail için kullandığımız **aynı** Google Cloud projesinde:
   invited" mesajı (kancanın üretimde gerçekten açık olduğunu ve Google'ın
   ret yolunu doğrular; yerelde yalnızca e-posta yolu test edilebildi).
 - Supabase → Authentication → Users: davetsiz hesap için satır OLMAMALI.
+
+## 6. Veri senkronu (üretim veritabanı açıldıktan sonra, ≈5 dk)
+
+Panel kendi verisini üretmez: bu Mac'teki ledger, tarama dosyaları, config'ler
+ve Sheet'in **yansımasını** gösterir. Yansıtan betik kaynaklara asla yazmaz.
+
+1. Supabase → Project Settings → API Keys → **Secret key**'i kopyala ve
+   **yalnızca bu Mac'te** şu dosyaya yaz (git'e girmez):
+
+   ```
+   # <repo>/.panel-sync/sync.env
+   SUPABASE_URL=https://<ref>.supabase.co
+   SUPABASE_SECRET_KEY=sb_secret_…
+   PANEL_SYNC_SOURCE="/Users/omer/signup automation/signupautomation"
+   ```
+
+2. İlk tam senkron ve doğrulama:
+
+   ```
+   set -a; . .panel-sync/sync.env; set +a
+   npm run panel:sync -- --source "$PANEL_SYNC_SOURCE" --full --verify
+   ```
+
+   Son satır `✅ Doğrulama: veritabanı kaynakla aynı.` olmalı.
+
+3. Zamanlanmış senkron (2 dakikada bir, oturum açıkken):
+
+   ```
+   npm run panel:sync-agent -- install     # kaldırmak için: uninstall, durum: status
+   ```
+
+   Günlük: `.panel-sync/sync.log`. Mac uyursa senkron durur; panel her sayfanın
+   sağ üstünde verinin yaşını gösterir ve 10 dakikayı geçince "stale" der.
+   Senkron çalışıp hata veriyorsa rozet "Sync is failing" der ve hatayı gösterir.
+
+Notlar:
+
+- Veritabanı kaynakların yansımasıdır: Sheet'ten silinen satır ya da silinen
+  config dosyası veritabanından da silinir. Bir tablonun TÜMÜNÜ ya da beşte
+  birinden fazlasını (ve 10 satırdan çoğunu) silmeyi gerektiren fark reddedilir —
+  yanlış `--source`, boş bir klasör ya da başka bir Sheet yansımayı silmesin diye.
+  Bilerek yapılan büyük temizlikte: `--allow-mass-delete`.
+- Olağan turun maliyeti bir okuma + bir kalp atışıdır: kaynağı değişmeyen tablo
+  veritabanından çekilmez (yerel özet önbelleği, `.panel-sync/state.json`).
+  Veritabanında elle yapılan bir değişiklik en geç 6 saat sonraki tam senkronda
+  ya da `--full` ile düzelir.
+- `discover --reset` bir sekmenin tarama dosyasını küçültürse panel o sekmeyi
+  dosyanın gerçek haline getirir (silmeler dahil): koruma yalnızca ledger, config
+  ve Sheet tablolarında devrededir. Hesaplar ve denemeler hiçbir zaman silinmez.
+- Senkron üst üste başarısız olursa zamanlanmış turlar seyrekleşir (4, 8, 16, 32,
+  en çok 60 dakika) ve tek bir başarı sayacı sıfırlar: kalıcı bir hata her
+  2 dakikada tüm tabloları yeniden çektirip ücretsiz Supabase'in çıkış kotasını
+  bitirmesin. Panel bu sürede "Sync is failing" der. Elle `npm run panel:sync`
+  çalıştırmak her zaman hemen dener.
+- Sheet en çok saatte bir okunur. Google token'ı (Testing modu) 7 günde bir
+  ölür; o zaman rozet "with a warning" der ve site listesi yenilenmez, geri
+  kalan veri akmaya devam eder. Çözüm: `npm run gmail:auth`.
+- Şema değişince tipleri yenile: `npm run db:types` (yerel Supabase açıkken).
+
+## Not: gizlilik sayfasındaki iletişim adresi
+
+Herkese açık `/privacy` sayfasında şirket adı ya da e-posta adresi YOK (iç araç;
+kimsenin adresini onaysız yayınlamıyoruz). Google'a uygulamayı doğrulatırken
+(Aşama 5) gerçek bir iletişim adresi ve işletici adı gerekecek; o zaman sen
+söyle, sayfaya eklerim.
 
 ## Bana gerekecekler (özet)
 

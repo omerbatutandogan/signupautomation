@@ -87,6 +87,24 @@ mail ayrıştırma testlerinin gerçek örnek korpusunu oluşturur.
 | `npm run gmail:auth` | Gmail OAuth kurulumu (tek seferlik) |
 | `npm run mail:recent` | Kutudaki son mailleri listele / `.eml` kaydet |
 
+## Web paneli (`apps/web` + `supabase/`)
+
+Ekibin tarama haritasını, açılan hesapları ve kayıt kuyruğunu gördüğü **salt-okunur**
+panel (Next.js + Supabase, yalnızca izin listesindeki Google hesapları girer).
+Panel kendi verisini üretmez: bu Mac'teki ledger, tarama dosyaları, config'ler ve
+Sheet'in yansımasını gösterir; kaynaklara yazmaz. Üretime alma adımları:
+`docs/panel-setup.md`.
+
+| Komut | Ne yapar |
+|---|---|
+| `npx supabase start` | Yerel veritabanı (Docker) |
+| `npm run panel:sync -- --source <canlı dizin> --verify` | Kaynakları panele yansıtır, sayımları doğrular |
+| `npm run panel:sync-agent -- install` | Senkronu 2 dakikada bir launchd'ye kurar (`uninstall`, `status`) |
+| `npm run db:types` | Şema değişince web tiplerini yeniler |
+| `npm run build -w apps/web && npm run start -w apps/web` | Paneli yerelde çalıştırır |
+| `npm run e2e -w apps/web` | Uçtan uca testler (yerel Supabase + çalışan panel gerekir) |
+| `npx supabase test db` | Veritabanı / RLS testleri (pgTAP) |
+
 ## Mimari notları
 
 **Tek e-posta, çoklu site.** Tüm siteler aynı adrese kaydolduğu için
