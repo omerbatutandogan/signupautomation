@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { columnLetter, siteIdFromWebsite } from '../src/integrations/sheet.js';
+import { columnLetter, parseSheetGrid, siteIdFromWebsite } from '../src/integrations/sheet.js';
 
 describe('siteIdFromWebsite', () => {
   it('basit domainden id çıkarır', () => {
@@ -73,5 +73,32 @@ describe('columnLetter', () => {
     expect(columnLetter(27)).toBe('AB');
     expect(columnLetter(51)).toBe('AZ');
     expect(columnLetter(52)).toBe('BA');
+  });
+});
+
+describe('parseSheetGrid — bütün sekmeyi (başlık dahil) satırlara çevirir', () => {
+  // Panel senkronu 22 sekmeyi tek istekle okuyor; sekmelerin şeması farklı.
+  it('Name + Website şeması (SaaS)', () => {
+    const rows = parseSheetGrid([
+      ['Name', 'Website', 'Durum', 'Not'],
+      ['Ten Words', 'https://10words.io', 'Tamamlandı', 'ok'],
+      ['', '', '', ''],
+      ['Beta List', 'betalist.com'],
+    ]);
+    expect(rows).toEqual([
+      expect.objectContaining({ rowNumber: 2, name: 'Ten Words', website: 'https://10words.io', status: 'Tamamlandı', siteId: '10words' }),
+      expect.objectContaining({ rowNumber: 4, name: 'Beta List', website: 'betalist.com', status: '', siteId: 'betalist' }),
+    ]);
+  });
+
+  it('yalnızca URL kolonu olan şema (Directory)', () => {
+    const rows = parseSheetGrid([['URL'], ['https://www.webwiki.de/'], ['  ']]);
+    expect(rows).toEqual([expect.objectContaining({ rowNumber: 2, name: '', website: 'https://www.webwiki.de/', siteId: 'webwiki-de' })]);
+  });
+
+  it('site adresi kolonu yoksa null döner (sessizce boş liste DEĞİL)', () => {
+    // Boş liste "sekmede site yok" demek; yanlış şemayı öyle saymak siteleri siler gibi gösterir.
+    expect(parseSheetGrid([['Foo', 'Bar'], ['a', 'b']])).toBeNull();
+    expect(parseSheetGrid([])).toBeNull();
   });
 });

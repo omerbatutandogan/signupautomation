@@ -87,6 +87,49 @@ export interface SheetRow {
 // Tanım packages/shared'de — web paneli aynı id'yi üretmeli.
 export { siteIdFromWebsite };
 
+/**
+ * Bir sekmenin TAMAMINI (1. satır başlık) satırlara çevirir — saf fonksiyon.
+ *
+ * Panel senkronu 22 sekmeyi tek istekle okuyor; sekmelerin şeması farklı
+ * (SaaS: Name + Website · Directory: yalnızca URL). Site adresi kolonu
+ * yoksa null döner: boş liste "sekmede site yok" demektir ve yanlış şemayı
+ * öyle saymak siteleri silinmiş gibi gösterirdi.
+ */
+export function parseSheetGrid(grid: unknown[][]): SheetRow[] | null {
+  const header = (grid[0] ?? []).map((h) => String(h ?? '').trim());
+  const index = new Map<string, number>();
+  header.forEach((h, i) => {
+    if (h && !index.has(h)) index.set(h, i);
+  });
+
+  const websiteColumn = WEBSITE_ALIASES.find((c) => index.has(c));
+  if (!websiteColumn) return null;
+  const nameColumn = NAME_ALIASES.find((c) => index.has(c));
+
+  const get = (row: string[], col: string | undefined): string => {
+    const idx = col === undefined ? undefined : index.get(col);
+    return idx === undefined ? '' : (row[idx] ?? '').trim();
+  };
+
+  return grid.slice(1).flatMap((raw, i) => {
+    const row = raw.map((c) => String(c ?? ''));
+    const website = get(row, websiteColumn);
+    if (!website) return [];
+    return [
+      {
+        rowNumber: i + 2, // başlık satırı 1, veri 2'den başlıyor
+        name: get(row, nameColumn),
+        website,
+        type: get(row, COLUMNS.type),
+        status: get(row, COLUMNS.status),
+        risk: get(row, COLUMNS.risk),
+        note: get(row, COLUMNS.note),
+        siteId: siteIdFromWebsite(website),
+      },
+    ];
+  });
+}
+
 export class SheetClient {
   private constructor(
     private readonly api: sheets_v4.Sheets,
@@ -105,7 +148,15 @@ export class SheetClient {
    * Sheet istemcisi oluşturur. Kimlik/erişim sorunu varsa null döner —
    * çağıran taraf Sheet'siz devam edebilmeli.
    */
-  static async create(log: Logger): Promise<SheetClient | null> {
+  /**
+   * @param tab  Okunacak sekme. Varsayılan env.SHEET_TAB; panel senkronu 22
+   *             sekmenin hepsini sırayla okumak için açıkça veriyor.
+   */
+  static async create(
+    log: Logger,
+    tab: string = env.SHEET_TAB,
+    opts: { loadHeaders?: boolean } = {},
+  ): Promise<SheetClient | null> {
     if (!env.SHEET_ID) {
       log.debug('SHEET_ID tanımsız — Sheet entegrasyonu devre dışı');
       return null;
@@ -135,8 +186,10 @@ export class SheetClient {
       oauth2.setCredentials(token as Record<string, unknown>);
 
       const api = sheetsApi({ version: 'v4', auth: oauth2 });
-      const client = new SheetClient(api, env.SHEET_ID, env.SHEET_TAB, log, new Map());
-      await client.loadHeaders();
+      const client = new SheetClient(api, env.SHEET_ID, tab, log, new Map());
+      // Yalnızca toplu okuma (readAllTabs) yapacak çağıranın tek sekmenin
+      // başlığına ihtiyacı yok; satır yazan/okuyan çağıranlar için varsayılan açık.
+      if (opts.loadHeaders !== false) await client.loadHeaders();
       return client;
     } catch (err) {
       // Mesaj çok satırlı olabiliyor (sekme listesi gibi) — pino tek satıra
@@ -154,6 +207,35 @@ export class SheetClient {
       const t = s.properties?.title;
       return t ? [t] : [];
     });
+  }
+
+  /**
+   * Bütün sekmeleri TEK istekle okur (values.batchGet).
+   *
+   * Sekme başına ayrı istek 22 sekmede 45+ çağrı ediyor ve art arda iki
+   * çalıştırma Sheets'in dakikalık okuma kotasına takılıyordu; bazı sekmeler
+   * sessizce atlanıp eksik liste "tam" sanıldı. Burada ya hepsi gelir ya da
+   * hata fırlatılır. Site adresi kolonu olmayan sekme de hatadır.
+   */
+  async readAllTabs(): Promise<Map<string, SheetRow[]>> {
+    const tabs = await this.tabNames();
+    const res = await this.api.spreadsheets.values.batchGet({
+      spreadsheetId: this.spreadsheetId,
+      // Sekme adı A1 gösteriminde tek tırnakla kaçırılır ("Deals " gibi adlar için).
+      ranges: tabs.map((t) => `'${t.replace(/'/g, "''")}'!A1:Z10000`),
+    });
+    const ranges = res.data.valueRanges ?? [];
+    if (ranges.length !== tabs.length) {
+      throw new Error(`Sheet ${tabs.length} sekme yerine ${ranges.length} aralık döndürdü`);
+    }
+
+    const out = new Map<string, SheetRow[]>();
+    tabs.forEach((tab, i) => {
+      const rows = parseSheetGrid((ranges[i]?.values ?? []) as unknown[][]);
+      if (rows === null) throw new Error(`Sekme "${tab}" içinde site adresi kolonu yok`);
+      out.set(tab, rows);
+    });
+    return out;
   }
 
   /** Başlık satırını okuyup kolon indekslerini çıkarır. */

@@ -23,8 +23,12 @@ export const DEFAULT_PRODUCT = 'geo-new';
 /** Ürün id'si dosya adı (src/profile/<id>.json) olarak da kullanılıyor. */
 const PRODUCT_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+export function isProductId(value: string): boolean {
+  return PRODUCT_ID.test(value);
+}
+
 export function assertProductId(productId: string): void {
-  if (!PRODUCT_ID.test(productId)) {
+  if (!isProductId(productId)) {
     throw new Error(
       `Geçersiz ürün id'si: "${productId}" — yalnızca küçük harf, rakam ve tire (örn. "geo-new")`,
     );
