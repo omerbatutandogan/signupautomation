@@ -9,44 +9,13 @@
  */
 
 import { readdir, readFile } from 'node:fs/promises';
-import { z } from 'zod';
+import { ProfileSchema } from '@signup/shared';
 import type { SignupProfile } from '../core/types.js';
 import { assertProductId } from './account.js';
 
 const PROFILE_DIR = 'src/profile';
 
-const nonEmpty = z.string().trim().min(1);
 
-const ProfileSchema = z.object({
-  companyName: nonEmpty,
-  legalName: nonEmpty,
-  website: z.string().url(),
-  tagline: nonEmpty,
-  descriptions: z.object({
-    short: nonEmpty,
-    medium: nonEmpty,
-    long: nonEmpty,
-  }),
-  category: z.object({
-    primary: nonEmpty,
-    aliases: z.array(nonEmpty),
-  }),
-  logo: z.record(z.string()),
-  contact: z.object({
-    firstName: nonEmpty,
-    lastName: nonEmpty,
-    role: nonEmpty,
-    email: z.string().email(),
-  }),
-  socials: z.object({
-    twitter: z.string().optional(),
-    linkedin: z.string().optional(),
-    github: z.string().optional(),
-  }),
-  pricing: nonEmpty,
-  foundedYear: z.number().int(),
-  signupEmail: z.string().email().optional(),
-});
 
 export async function listProducts(): Promise<string[]> {
   const files = await readdir(PROFILE_DIR).catch(() => [] as string[]);

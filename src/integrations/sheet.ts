@@ -16,6 +16,7 @@ import { auth as googleAuth, sheets as sheetsApi, type sheets_v4 } from '@google
 import type { Logger } from 'pino';
 import { env } from '../config.js';
 import type { RiskLevel, TerminalStatus } from '../core/types.js';
+import { siteIdFromWebsite } from '@signup/shared';
 
 /** Sheet'teki Durum kolonunun değerleri — core/types.ts'teki STATUS ile hizalı. */
 export const SHEET_STATUS = {
@@ -83,51 +84,8 @@ export interface SheetRow {
   siteId: string;
 }
 
-/**
- * Website URL'inden site id üretir: "alternativeto.net" → "alternativeto"
- *
- * Aynı markanın farklı ülke siteleri AYRI id alır: webwiki.de → "webwiki-de",
- * webwiki.fr → "webwiki-fr". Bunlar ayrı dizinler ve her birine ayrı kayıt
- * olunabiliyor; hepsini "webwiki" saymak 7 siteyi sessizce yutuyordu
- * (Sheet'te 8 webwiki satırı var, yalnızca biri işleniyordu).
- *
- * Ana TLD'ler (.com/.net/.org/.io/...) sonek ALMAZ — mevcut config'lerin
- * id'si değişmesin diye.
- */
-const GENERIC_TLDS = new Set([
-  'com',
-  'net',
-  'org',
-  'io',
-  'co',
-  'app',
-  'dev',
-  'ai',
-  'me',
-  'directory',
-  'tools',
-  'so',
-  'xyz',
-]);
-
-export function siteIdFromWebsite(website: string): string {
-  const host = website
-    .replace(/^https?:\/\//i, '')
-    .replace(/^www\./i, '')
-    .split('/')[0]
-    ?.toLowerCase();
-  if (!host) return '';
-  // İlk etiketi al: "portal.10words.io" → "10words" değil, "portal" olurdu;
-  // bu yüzden eTLD'yi atıp en anlamlı etiketi seçiyoruz.
-  const labels = host.split('.');
-  const meaningful = labels.length > 2 ? labels[labels.length - 2] : labels[0];
-  const base = (meaningful ?? '').replace(/[^a-z0-9-]/g, '');
-  if (!base) return '';
-
-  const tld = labels[labels.length - 1] ?? '';
-  if (GENERIC_TLDS.has(tld) || !/^[a-z]{2,}$/.test(tld)) return base;
-  return `${base}-${tld}`;
-}
+// Tanım packages/shared'de — web paneli aynı id'yi üretmeli.
+export { siteIdFromWebsite };
 
 export class SheetClient {
   private constructor(

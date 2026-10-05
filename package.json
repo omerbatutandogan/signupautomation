@@ -25,6 +25,7 @@
   "dependencies": {
     "@googleapis/gmail": "^22.0.0",
     "@googleapis/sheets": "^18.0.0",
+    "@signup/shared": "*",
     "better-sqlite3": "^13.0.3",
     "dotenv": "^16.4.7",
     "google-auth-library": "^9.15.0",
@@ -42,5 +43,9 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "vitest": "^2.1.8"
-  }
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
 }

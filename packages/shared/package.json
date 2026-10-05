@@ -1,0 +1,13 @@
+{
+  "name": "@signup/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Web paneli ve işçinin ortak kodu: şemalar, hesap anahtarı, site kimliği",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  }
+}
