@@ -7,12 +7,15 @@
  */
 
 import { chromium, type BrowserContext, type Page } from 'playwright';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { env } from '../config.js';
 import { attachCaptchaSniffer, type CaptchaNetworkState } from './captcha.js';
 
 const PROFILE_ROOT = 'data/profiles';
+
+/** Geçici (dry-run) profil dizinlerinin öneki. */
+export const TEMP_PROFILE_PREFIX = '.dry-';
 
 /** Gerçekçi masaüstü viewport'ları — site id'sinden deterministik seçilir. */
 const VIEWPORTS = [
@@ -35,24 +38,56 @@ function viewportFor(siteId: string): { width: number; height: number } {
   return VIEWPORTS[hash % VIEWPORTS.length]!;
 }
 
+async function exists(path: string): Promise<boolean> {
+  return access(path).then(
+    () => true,
+    () => false,
+  );
+}
+
+/**
+ * @param opts.ephemeral  Henüz kalıcı profili OLMAYAN bir site için geçici profil
+ *   kullan ve kapanışta sil. Dry-run için: kalıcı profilin tek işi çerez
+ *   saklamak ve dry-run submit etmediği için saklanacak oturum yok; üstelik
+ *   her profil yüzlerce MB tutabilir (700 taslağı doğrulamak diski doldururdu).
+ *   Kalıcı profili ZATEN olan site (gerçek hesabı olan) eskisi gibi onu kullanır:
+ *   çözülmüş Cloudflare çerezleri korunur.
+ */
 export async function launchContext(
   siteId: string,
-  opts: { headless?: boolean } = {},
+  opts: { headless?: boolean; ephemeral?: boolean } = {},
 ): Promise<LaunchedContext> {
-  const profileDir = `${PROFILE_ROOT}/${siteId}`;
-  await mkdir(profileDir, { recursive: true });
+  const permanentDir = `${PROFILE_ROOT}/${siteId}`;
+  const ephemeral = opts.ephemeral === true && !(await exists(permanentDir));
+
+  let profileDir = permanentDir;
+  if (ephemeral) {
+    await mkdir(PROFILE_ROOT, { recursive: true });
+    // ".dry-" öneki: yarıda ölen bir tur geride bu dizini bırakırsa tek bakışta
+    // tanınsın ve temizlenebilsin (scripts/verify-drafts.ts bunu yapar).
+    profileDir = await mkdtemp(`${PROFILE_ROOT}/${TEMP_PROFILE_PREFIX}`);
+  } else {
+    await mkdir(profileDir, { recursive: true });
+  }
+  const removeTemp = () => (ephemeral ? rm(profileDir, { recursive: true, force: true }).catch(() => undefined) : undefined);
 
   const viewport = viewportFor(siteId);
 
-  const context = await chromium.launchPersistentContext(profileDir, {
-    headless: opts.headless ?? env.HEADLESS,
-    viewport,
-    locale: 'en-US',
-    timezoneId: 'Europe/Istanbul',
-    // Otomasyon bayrağını gizlemek bot tespitini "atlatmak" için değil;
-    // bazı siteler bu bayrakla formu hiç göstermiyor ve akış boşa çıkıyor.
-    args: ['--disable-blink-features=AutomationControlled'],
-  });
+  let context: BrowserContext;
+  try {
+    context = await chromium.launchPersistentContext(profileDir, {
+      headless: opts.headless ?? env.HEADLESS,
+      viewport,
+      locale: 'en-US',
+      timezoneId: 'Europe/Istanbul',
+      // Otomasyon bayrağını gizlemek bot tespitini "atlatmak" için değil;
+      // bazı siteler bu bayrakla formu hiç göstermiyor ve akış boşa çıkıyor.
+      args: ['--disable-blink-features=AutomationControlled'],
+    });
+  } catch (err) {
+    await removeTemp();
+    throw err;
+  }
 
   const captchaNetwork = attachCaptchaSniffer(context);
 
@@ -67,6 +102,7 @@ export async function launchContext(
       await context.close().catch(() => {
         /* kapanış hatası asıl sonucu gölgelememeli */
       });
+      await removeTemp();
     },
   };
 }

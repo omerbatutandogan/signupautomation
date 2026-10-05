@@ -220,12 +220,20 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
     };
 
     // Submit'ten ÖNCE kaydet: çökme halinde hangi kimlikle denendiği kaybolmasın.
-    ledger.saveCredentials(key, identity.email, identity.username, identity.passwordVersion);
+    //
+    // DRY-RUN'DA KAYDEDİLMEZ: submit yok, dolayısıyla hesap da yok. Sahte kayıt
+    // credentials tablosunu yalanlıyor ve aynı e-postayı kullanan BAŞKA bir ürünün
+    // gerçek kaydını "bu sitede bu e-posta zaten kullanılıyor" diye engelliyordu
+    // (otherAccountWithEmail). Toplu doğrulama (yüzlerce dry-run) bunu katlardı.
+    if (!opts.dryRun) {
+      ledger.saveCredentials(key, identity.email, identity.username, identity.passwordVersion);
+    }
     identitySnapshot = { email: identity.email, username: identity.username };
 
     // Tarayıcı profili de hesap başına: aynı sitede A ürününün oturum
-    // çerezleri B ürününün kaydına karışmasın.
-    browser = await launchContext(key);
+    // çerezleri B ürününün kaydına karışmasın. Dry-run, kalıcı profili olmayan
+    // sitede geçici profil kullanır ve iz bırakmaz (bkz. launchContext).
+    browser = await launchContext(key, { ephemeral: opts.dryRun === true });
     const artifacts = createArtifacts(browser.page, runId, key);
     outcome.artifactsDir = artifacts.dir;
 

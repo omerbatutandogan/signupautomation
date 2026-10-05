@@ -288,6 +288,18 @@ async function runStep(ctx: SignupContext, step: Step, index: number): Promise<v
         return;
       }
 
+      // DRY-RUN: captcha'yı ÇÖZME ve insan BEKLEME. Dry-run submit etmiyor; captcha
+      // yalnızca submit'i korur, yani çözmenin hiçbir faydası yok. Çözmek ise
+      // ücretli (2captcha) ve ToS riski taşıyor; beklemek ise (CAPTCHA_TIMEOUT_MS,
+      // varsayılan 15 dk) görünmez/başsız çalışan toplu doğrulamayı saatlerce
+      // durdururdu. Görüldüğünü kaydet — gerçek kayıtta hangi sitenin captcha'sı
+      // olduğunu bilmek faydalı.
+      if (ctx.dryRun) {
+        const shot = await ctx.artifacts.shot(`captcha-${kind}`);
+        log.info({ kind, shot }, 'DRY-RUN: captcha görüldü — çözülmedi, insan beklenmedi');
+        return;
+      }
+
       // v3/managed Turnstile sessizce skorlar — insan çağırmak gereksiz.
       if (!(await needsHumanIntervention(ctx.page, kind))) {
         log.info({ kind }, 'Passive captcha tespit edildi, devam ediliyor');
