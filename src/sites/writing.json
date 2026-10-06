@@ -85,5 +85,5 @@
     "mode": "link",
     "timeoutMs": 180000
   },
-  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: link-follow, 1 sıçrama, güven: high. Captcha görülmedi. Uyarılar: GÖRÜNMEZ ZORUNLU ALAN (label[for=...] tıklaması gerekebilir): #user_first_name, #user_last_name, #user_handle, #bmonth, #bday, #byear, #user_country, #terms1, #terms2, #qqwest"
+  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: link-follow, 1 sıçrama, güven: high. Captcha görülmedi. Uyarılar: GÖRÜNMEZ ZORUNLU ALAN (label[for=...] tıklaması gerekebilir): #user_first_name, #user_last_name, #user_handle, #bmonth, #bday, #byear, #user_country, #terms1, #terms2, #qqwest"
 }
