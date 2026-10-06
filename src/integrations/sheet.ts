@@ -349,6 +349,47 @@ export class SheetClient {
     }
   }
 
+  /**
+   * Toplu not düşme: `headers` yoksa başlık satırının SAĞINA eklenir, satır başına
+   * değerler birkaç batchUpdate ile yazılır. Mevcut kolonlara dokunulmaz; tekrar
+   * çalıştırmak aynı sonucu verir (üzerine yazar). Sheet'in sürüm geçmişi geri alma sağlar.
+   */
+  async writeAnnotations(
+    headers: string[],
+    rows: Array<{ rowNumber: number; values: string[] }>,
+  ): Promise<{ addedHeaders: string[]; written: number }> {
+    const tab = quoteTab(this.tab);
+    const missing = headers.filter((h) => !this.headers.has(h));
+    if (missing.length > 0) {
+      const start = Math.max(...this.headers.values()) + 1;
+      await this.api.spreadsheets.values.update({
+        spreadsheetId: this.spreadsheetId,
+        range: `${tab}!${columnLetter(start)}1:${columnLetter(start + missing.length - 1)}1`,
+        valueInputOption: 'RAW',
+        requestBody: { values: [missing] },
+      });
+      missing.forEach((name, i) => this.headers.set(name, start + i));
+    }
+
+    const cols = headers.map((h) => this.headers.get(h) as number);
+    const first = cols[0] as number;
+    const last = cols[cols.length - 1] as number;
+    const contiguous = cols.every((c, i) => c === first + i);
+    const data = rows.flatMap((r) =>
+      contiguous
+        ? [{ range: `${tab}!${columnLetter(first)}${r.rowNumber}:${columnLetter(last)}${r.rowNumber}`, values: [r.values] }]
+        : cols.map((c, i) => ({ range: `${tab}!${columnLetter(c)}${r.rowNumber}`, values: [[r.values[i] ?? '']] })),
+    );
+
+    for (let i = 0; i < data.length; i += 400) {
+      await this.api.spreadsheets.values.batchUpdate({
+        spreadsheetId: this.spreadsheetId,
+        requestBody: { valueInputOption: 'RAW', data: data.slice(i, i + 400) },
+      });
+    }
+    return { addedHeaders: missing, written: rows.length };
+  }
+
   async writeRisk(row: SheetRow, risk: RiskLevel): Promise<void> {
     await this.writeCell(row.rowNumber, COLUMNS.risk, risk);
   }
@@ -377,6 +418,12 @@ export class SheetClient {
     missing.forEach((name, i) => this.headers.set(name, startIndex + i));
     return missing;
   }
+}
+
+
+/** Sekme adı A1 gösteriminde: tek tırnak içinde, içindeki tırnaklar ikilenir ("Deals " gibi adlar için). */
+export function quoteTab(tab: string): string {
+  return `'${tab.replace(/'/g, "''")}'`;
 }
 
 /** 0-tabanlı indeksi A, B, ..., Z, AA formatına çevirir. */
