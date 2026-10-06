@@ -254,6 +254,18 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
     const result = await adapter.signup(ctx);
 
     if (result.status === 'already_exists') {
+      // DRY-RUN'DA bu DOĞRULAMA DEĞİLDİR: form hiç gönderilmedi, "zaten kayıtlı"
+      // metni sayfanın kendi içeriğinden gelir ("Already registered? Log in" gibi
+      // kayıt sayfalarında sıradan bir bağlantı metni). completed dönerse run-one
+      // config'i "doğrulandı" işaretler ve alan doldurma hiç denetlenmemiş olur.
+      if (opts.dryRun) {
+        outcome = {
+          status: 'manual',
+          note: 'dry-run: sayfada "zaten kayıtlı" metni var ama form gönderilmedi — doğrulanamadı',
+          artifactsDir: artifacts.dir,
+        };
+        return outcome;
+      }
       outcome = { ...alreadyExistsOutcome(), artifactsDir: artifacts.dir };
       return outcome;
     }

@@ -26,6 +26,8 @@ const VIEWPORTS = [
 ] as const;
 
 export interface LaunchedContext {
+  /** Kullanılan profil dizini (geçici ya da kalıcı). */
+  profileDir: string;
   context: BrowserContext;
   page: Page;
   captchaNetwork: CaptchaNetworkState;
@@ -55,17 +57,18 @@ async function exists(path: string): Promise<boolean> {
  */
 export async function launchContext(
   siteId: string,
-  opts: { headless?: boolean; ephemeral?: boolean } = {},
+  opts: { headless?: boolean; ephemeral?: boolean; profileRoot?: string } = {},
 ): Promise<LaunchedContext> {
-  const permanentDir = `${PROFILE_ROOT}/${siteId}`;
+  const root = opts.profileRoot ?? PROFILE_ROOT;
+  const permanentDir = `${root}/${siteId}`;
   const ephemeral = opts.ephemeral === true && !(await exists(permanentDir));
 
   let profileDir = permanentDir;
   if (ephemeral) {
-    await mkdir(PROFILE_ROOT, { recursive: true });
+    await mkdir(root, { recursive: true });
     // ".dry-" öneki: yarıda ölen bir tur geride bu dizini bırakırsa tek bakışta
     // tanınsın ve temizlenebilsin (scripts/verify-drafts.ts bunu yapar).
-    profileDir = await mkdtemp(`${PROFILE_ROOT}/${TEMP_PROFILE_PREFIX}`);
+    profileDir = await mkdtemp(`${root}/${TEMP_PROFILE_PREFIX}`);
   } else {
     await mkdir(profileDir, { recursive: true });
   }
@@ -89,12 +92,21 @@ export async function launchContext(
     throw err;
   }
 
-  const captchaNetwork = attachCaptchaSniffer(context);
-
-  const page = context.pages()[0] ?? (await context.newPage());
-  page.setDefaultTimeout(15_000);
+  let captchaNetwork: LaunchedContext['captchaNetwork'];
+  let page: Page;
+  try {
+    captchaNetwork = attachCaptchaSniffer(context);
+    page = context.pages()[0] ?? (await context.newPage());
+    page.setDefaultTimeout(15_000);
+  } catch (err) {
+    // Tarayıcı açıldı ama sayfa kurulamadı: bağlamı ve geçici dizini bırakma.
+    await context.close().catch(() => undefined);
+    await removeTemp();
+    throw err;
+  }
 
   return {
+    profileDir,
     context,
     page,
     captchaNetwork,

@@ -1,4 +1,6 @@
-import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { launchContext, TEMP_PROFILE_PREFIX } from '../src/core/browser.js';
 
@@ -6,46 +8,42 @@ import { launchContext, TEMP_PROFILE_PREFIX } from '../src/core/browser.js';
  * Dry-run için geçici tarayıcı profili — GERÇEK launchContext ile.
  *
  * Kalıcı profil dizini site başına yüzlerce MB tutabiliyor; 700 taslağı dry-run
- * ile doğrulamak boş diski (11 GB) doldururdu. Kalıcı profili olan sitede ise
- * eskisi gibi o kullanılmalı: çözülmüş Cloudflare çerezleri korunur.
+ * ile doğrulamak boş diski doldururdu. Kalıcı profili olan sitede ise eskisi gibi
+ * o kullanılmalı: çözülmüş Cloudflare çerezleri korunur.
+ *
+ * Profil kökü bu teste özel geçici dizindir: gerçek data/profiles'a ve ondaki
+ * (toplu doğrulamanın açıp sildiği) .dry-* dizinlerine bağlı değil.
  */
 
-const REAL_PROFILE_ROOT = 'data/profiles';
-const createdProfiles: string[] = [];
+const root = mkdtempSync(join(tmpdir(), 'profiles-'));
+afterAll(() => rmSync(root, { recursive: true, force: true }));
 
-afterAll(() => {
-  for (const dir of createdProfiles) rmSync(dir, { recursive: true, force: true });
-});
-
-const tempDirs = () =>
-  existsSync(REAL_PROFILE_ROOT) ? readdirSync(REAL_PROFILE_ROOT).filter((d) => d.startsWith(TEMP_PROFILE_PREFIX)) : [];
+const tempDirs = () => readdirSync(root).filter((d) => d.startsWith(TEMP_PROFILE_PREFIX));
 
 describe('launchContext — geçici profil', () => {
   it('ephemeral + kalıcı profil yok: geçici dizin kullanılır ve kapanışta silinir; kalıcı dizin oluşmaz', async () => {
-    const id = `trace-eph-${process.pid}`;
-    const before = tempDirs();
-    const launched = await launchContext(id, { headless: true, ephemeral: true });
+    const launched = await launchContext('eph-site', { headless: true, ephemeral: true, profileRoot: root });
     try {
-      expect(tempDirs().length).toBe(before.length + 1); // çalışırken geçici profil var
-      expect(existsSync(`${REAL_PROFILE_ROOT}/${id}`)).toBe(false);
+      expect(launched.profileDir.startsWith(`${root}/${TEMP_PROFILE_PREFIX}`)).toBe(true);
+      expect(existsSync(launched.profileDir)).toBe(true);
+      expect(existsSync(`${root}/eph-site`)).toBe(false);
       await launched.page.goto('about:blank');
     } finally {
       await launched.close();
     }
-    expect(tempDirs()).toEqual(before); // kapanışta iz kalmadı
-    expect(existsSync(`${REAL_PROFILE_ROOT}/${id}`)).toBe(false);
+    expect(existsSync(launched.profileDir)).toBe(false);
+    expect(tempDirs()).toEqual([]);
+    expect(existsSync(`${root}/eph-site`)).toBe(false);
   }, 60_000);
 
   it('ephemeral ama kalıcı profil ZATEN var: onu kullanır ve SİLMEZ (çözülmüş çerezler korunur)', async () => {
-    const id = `trace-keep-${process.pid}`;
-    const dir = `${REAL_PROFILE_ROOT}/${id}`;
+    const dir = `${root}/keep-site`;
     mkdirSync(dir, { recursive: true });
-    createdProfiles.push(dir);
-    const before = tempDirs();
 
-    const launched = await launchContext(id, { headless: true, ephemeral: true });
+    const launched = await launchContext('keep-site', { headless: true, ephemeral: true, profileRoot: root });
     try {
-      expect(tempDirs()).toEqual(before); // geçici dizin açılmadı
+      expect(launched.profileDir).toBe(dir);
+      expect(tempDirs()).toEqual([]);
     } finally {
       await launched.close();
     }
@@ -53,13 +51,10 @@ describe('launchContext — geçici profil', () => {
   }, 60_000);
 
   it('ephemeral değilken (gerçek kayıt) kalıcı profil oluşturur ve bırakır', async () => {
-    const id = `trace-perm-${process.pid}`;
-    const dir = `${REAL_PROFILE_ROOT}/${id}`;
-    createdProfiles.push(dir);
-
-    const launched = await launchContext(id, { headless: true });
+    const launched = await launchContext('perm-site', { headless: true, profileRoot: root });
     await launched.close();
 
-    expect(existsSync(dir)).toBe(true);
+    expect(launched.profileDir).toBe(`${root}/perm-site`);
+    expect(existsSync(`${root}/perm-site`)).toBe(true);
   }, 60_000);
 });

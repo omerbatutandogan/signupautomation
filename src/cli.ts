@@ -83,7 +83,9 @@ async function markVerified(siteId: string): Promise<void> {
     if (!isUnverified(cfg)) return;
 
     cfg.notes = clearUnverifiedMarker(cfg.notes);
-    await writeFile(path, `${JSON.stringify(cfg, null, 2)}\n`);
+    // Atomik: yazarken öldürülürse config yarım kalıp sessizce kaybolmasın.
+    await writeFile(`${path}.tmp`, `${JSON.stringify(cfg, null, 2)}\n`);
+    await (await import('node:fs/promises')).rename(`${path}.tmp`, path);
     if (isUnverified(cfg)) {
       console.log(
         `   ⚠️  Dry-run geçti ama site taşınmış — doğru siteyse notlardaki "${MOVE_MARKER}" damgasını elle sil`,

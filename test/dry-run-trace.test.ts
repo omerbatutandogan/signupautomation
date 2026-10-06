@@ -36,6 +36,12 @@ vi.mock('../src/core/browser.js', async (original) => ({
   }),
 }));
 
+// Gerçek artifacts/ dizinine ekran görüntüsü yazılmasın.
+vi.mock('../src/core/artifacts.js', () => ({
+  createArtifacts: () => ({ dir: 'memory', shot: async () => 'memory/x.png', html: async () => 'memory/x.html' }),
+  captureFailure: async () => ({ shot: 'memory/x.png', html: 'memory/x.html' }),
+}));
+
 let browser: Browser;
 
 beforeAll(async () => {
@@ -101,6 +107,38 @@ describe('runSite — dry-run kimlik kaydı yazmaz', () => {
       expect(outcome.status).toBe('failed'); // adapter bilerek düştü; submit olmadı
       expect(ledger.credentials('trace-real')).toMatchObject({ site_id: 'trace-real' });
       expect(browserSpy.launches).toEqual([{ key: 'trace-real', opts: { ephemeral: false } }]);
+    } finally {
+      ledger.close();
+    }
+  }, 30_000);
+});
+
+describe('runSite — dry-run "zaten kayıtlı" metni DOĞRULAMA sayılmaz', () => {
+  // Kayıt sayfalarında "Already registered? Log in" gibi sıradan metinler olur; form
+  // hiç gönderilmediği halde sınıflandırıcı "hesap zaten var" derse dry-run
+  // 'completed' dönüyor, run-one config'i doğrulanmış işaretliyordu (veoh,
+  // misterwhat-au, shrunken). Alan doldurma denetimi hiç çalışmamıştı.
+  it('dry-run: already_exists → manual (cli doğrulanmış işaretlemez)', async () => {
+    const { adapter, siteConfig } = site('trace-exists-dry');
+    (adapter.signup as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ status: 'already_exists' });
+    const ledger = new Ledger(':memory:');
+    try {
+      const outcome = await runSite('trace-exists-dry', { log: pino({ level: 'silent' }), ledger, dryRun: true, adapter, siteConfig });
+      expect(outcome.status).toBe('manual');
+      expect(outcome.note).toMatch(/doğrulanamadı/);
+    } finally {
+      ledger.close();
+    }
+  }, 30_000);
+
+  it('gerçek çalıştırma (kontrol): already_exists hâlâ başarıdır', async () => {
+    const { adapter, siteConfig } = site('trace-exists-real');
+    (adapter.signup as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ status: 'already_exists' });
+    const ledger = new Ledger(':memory:');
+    try {
+      const outcome = await runSite('trace-exists-real', { log: pino({ level: 'silent' }), ledger, dryRun: false, adapter, siteConfig });
+      expect(outcome.status).toBe('completed');
+      expect(outcome.note).toMatch(/zaten mevcut/);
     } finally {
       ledger.close();
     }
