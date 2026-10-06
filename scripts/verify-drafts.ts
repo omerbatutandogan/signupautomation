@@ -51,6 +51,16 @@ const option = (name: string) => (args.includes(name) ? args[args.indexOf(name) 
 const limit = Number(option('--limit') ?? Infinity);
 const only = option('--only')?.split(',').map((s) => s.trim()).filter(Boolean);
 const timeoutMs = Number(option('--timeout-min') ?? 4) * 60_000;
+if (!(limit > 0) || !(timeoutMs > 0)) {
+  console.error('--limit ve --timeout-min pozitif sayı olmalı');
+  process.exit(2);
+}
+for (const id of only ?? []) {
+  if (!/^[a-z0-9-]+$/.test(id) || !existsSync(`${SITES_DIR}/${id}.json`)) {
+    console.error(`--only: geçersiz ya da config'i olmayan site: ${id}`);
+    process.exit(2);
+  }
+}
 
 type Status = 'verified' | 'failed' | 'timeout';
 interface Result {
@@ -147,10 +157,33 @@ function cleanTempProfiles(): void {
   }
 }
 
-/** Süreç grubunu öldürdükten sonra ayrı gruba geçmiş Chromium süreçleri de kalmasın. */
-function killOrphanBrowsers(siteId: string): void {
-  spawnSync('pkill', ['-9', '-f', `user-data-dir=.*data/profiles/(${TEMP_PROFILE_PREFIX.replace('.', '\\.')}[^ ]*|${siteId})( |$)`]);
+/**
+ * Çocuk sürecin ağacını öldür. Playwright Chromium'u KENDİ süreç grubunda başlatır;
+ * node'un grubunu öldürmek ona ulaşmaz. Doğrudan çocukları (Chromium tarayıcı süreci)
+ * bulup GRUPLARINI öldürürüz: GPU/renderer yardımcıları da o gruptadır. Desen
+ * eşlemesi yok, bu yüzden başka bir Chromium'a (elle dry-run, test, başka kopya) dokunulmaz.
+ */
+function killTree(pid: number): void {
+  const kids = spawnSync('pgrep', ['-P', String(pid)]).stdout.toString().split('\n').filter(Boolean).map(Number);
+  for (const kid of kids) {
+    try {
+      process.kill(-kid, 'SIGKILL');
+    } catch {
+      try {
+        process.kill(kid, 'SIGKILL');
+      } catch {
+        /* zaten bitmiş */
+      }
+    }
+  }
+  try {
+    process.kill(-pid, 'SIGKILL');
+  } catch {
+    /* zaten bitmiş */
+  }
 }
+
+let currentChild: number | null = null;
 
 function runOne(siteId: string): Promise<{ exit: number | null; timedOut: boolean; logPath: string }> {
   mkdirSync(LOG_DIR, { recursive: true });
@@ -164,23 +197,28 @@ function runOne(siteId: string): Promise<{ exit: number | null; timedOut: boolea
     const child = spawn(process.execPath, cmd, {
       stdio: ['ignore', fd, fd],
       detached: true, // kendi süreç grubu: zaman aşımında grubun tamamı öldürülür
-      env: { ...process.env, HEADLESS: 'true' }, // yüzlerce pencere kullanıcının ekranını ele geçirmesin
+      // HEADLESS: yüzlerce pencere kullanıcının ekranını ele geçirmesin.
+      // CAPTCHA_API_KEY boş: dry-run zaten çözücüyü çağırmaz (kodda), bu İKİNCİ kilit:
+      // bir gün o kod değişse bile bu betik ücretli çözücüye erişemez (dotenv var olanı ezmez).
+      env: { ...process.env, HEADLESS: 'true', CAPTCHA_API_KEY: '' },
     });
+    currentChild = child.pid ?? null;
     let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      try {
-        if (child.pid) process.kill(-child.pid, 'SIGKILL');
-      } catch {
-        /* zaten bitmiş */
-      }
-      killOrphanBrowsers(siteId);
-    }, timeoutMs);
-    child.on('exit', (code) => {
+    let finished = false;
+    const finish = (code: number | null) => {
+      if (finished) return;
+      finished = true;
       clearTimeout(timer);
+      currentChild = null;
       closeSync(fd);
       resolve({ exit: code, timedOut, logPath });
-    });
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      if (child.pid) killTree(child.pid);
+    }, timeoutMs);
+    child.on('exit', (code) => finish(code));
+    child.on('error', () => finish(null)); // süreç başlatılamadı: tur çökmesin, site 'failed' sayılır
   });
 }
 
@@ -216,11 +254,38 @@ function printSummary(progress: Progress, total: number): void {
   );
 }
 
-async function main(): Promise<number> {
-  mkdirSync(LOG_DIR, { recursive: true });
-  rmSync(STOP_FILE, { force: true });
-  cleanTempProfiles();
+const LOCK_FILE = `${OUT_DIR}/lock`;
 
+/** Tek örnek: iki betik birbirinin geçici profilini siler ve ilerleme dosyasını ezer. */
+function acquireLock(): void {
+  mkdirSync(OUT_DIR, { recursive: true });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      writeFileSync(LOCK_FILE, String(process.pid), { flag: 'wx' });
+      return;
+    } catch {
+      const other = Number(readFileSync(LOCK_FILE, 'utf8'));
+      let alive = true;
+      try {
+        process.kill(other, 0);
+      } catch {
+        alive = false;
+      }
+      if (alive) throw new Error(`verify-drafts zaten çalışıyor (pid ${other})`);
+      rmSync(LOCK_FILE, { force: true }); // ölü sürecin kilidi
+    }
+  }
+  throw new Error('kilit alınamadı');
+}
+
+function shutdown(code: number): never {
+  if (currentChild) killTree(currentChild);
+  cleanTempProfiles();
+  rmSync(LOCK_FILE, { force: true });
+  process.exit(code);
+}
+
+async function main(): Promise<number> {
   const progress = loadProgress();
   let todo = only ?? candidates();
   const total = todo.length;
@@ -229,10 +294,17 @@ async function main(): Promise<number> {
   todo = todo.slice(0, limit);
 
   console.log(`Doğrulanacak taslak: ${todo.length} (kalan), aday toplamı: ${total}, zaman aşımı: ${timeoutMs / 60_000} dk`);
+  // Yan etkisiz: çalışan bir turun STOP dosyasına ve geçici profiline DOKUNMADAN çık.
   if (flag('--dry-list')) {
     console.log(todo.join('\n'));
     return 0;
   }
+
+  acquireLock();
+  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(sig, () => shutdown(130));
+  mkdirSync(LOG_DIR, { recursive: true });
+  rmSync(STOP_FILE, { force: true });
+  cleanTempProfiles();
 
   const started = Date.now();
   let done = 0;
@@ -250,7 +322,7 @@ async function main(): Promise<number> {
         console.log(`\n⚠️  Boş disk ${(freeBytes() / 1024 ** 3).toFixed(1)} GB (eşik ${MIN_FREE_BYTES / 1024 ** 3} GB) — disk açılana kadar bekliyor (durdurmak için STOP dosyası).`);
         warned = true;
       }
-      await sleep(120_000);
+      await sleep(5_000); // STOP hızla fark edilsin
     }
     if (warned) console.log(`   Disk açıldı (${(freeBytes() / 1024 ** 3).toFixed(1)} GB) — devam.`);
     if (existsSync(STOP_FILE)) {
@@ -259,10 +331,12 @@ async function main(): Promise<number> {
     }
 
     const t0 = Date.now();
+    // "Doğrulandı" = bu çalıştırma damgayı KALDIRDI (önceden damgalıydı, şimdi değil).
+    const wasUnverified = isStillUnverified(id);
     const { exit, timedOut, logPath } = await runOne(id);
     cleanTempProfiles(); // normal çıkışta boştur; kill sonrası artıkları siler
     const { note, captcha } = summarize(logPath);
-    const status: Status = timedOut ? 'timeout' : !isStillUnverified(id) ? 'verified' : 'failed';
+    const status: Status = timedOut ? 'timeout' : wasUnverified && !isStillUnverified(id) ? 'verified' : 'failed';
     progress[id] = {
       status,
       at: new Date().toISOString(),
@@ -287,6 +361,7 @@ async function main(): Promise<number> {
 
   printSummary(progress, total);
   writeFileSync(`${OUT_DIR}/summary.txt`, JSON.stringify(progress, null, 1));
+  rmSync(LOCK_FILE, { force: true });
   return 0;
 }
 
@@ -294,5 +369,12 @@ main()
   .then((code) => process.exit(code))
   .catch((err: unknown) => {
     console.error('\n❌ Hata:', err instanceof Error ? err.message : err);
+    if (currentChild) killTree(currentChild);
+    // Başka bir örneğin kilidini silme: yalnızca kendi pid'imizse kaldır.
+    try {
+      if (Number(readFileSync(LOCK_FILE, 'utf8')) === process.pid) rmSync(LOCK_FILE, { force: true });
+    } catch {
+      /* kilit yok */
+    }
     process.exit(1);
   });
