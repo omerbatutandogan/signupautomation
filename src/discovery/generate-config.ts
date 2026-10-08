@@ -6,6 +6,7 @@
  * forma veri göndermek demek — --dry-run ile doğrulanana kadar kullanılmaz.
  */
 
+import { checkboxLabelSelector } from './selectors.js';
 import { parseSiteConfig } from '../adapters/schema.js';
 import { awaitsMoveApproval, MOVE_MARKER } from '../core/markers.js';
 import type { RiskLevel, SiteConfig, Step } from '../core/types.js';
@@ -131,7 +132,7 @@ function buildSteps(input: GenerateInput): { steps: Step[]; unmapped: string[] }
       // çevrilmesi gerekti. id varsa bunu OTOMATİK üret; id yoksa
       // (id'siz checkbox nadir ama olur) eski check() adımına düş.
       if (f.id) {
-        steps.push({ type: 'click', selector: `label[for='${f.id}']`, optional: true });
+        steps.push({ type: 'click', selector: checkboxLabelSelector(f.id, f.selector), optional: true });
       } else {
         steps.push({ type: 'check', selector: f.selector, optional: true });
       }
@@ -157,7 +158,7 @@ function buildSteps(input: GenerateInput): { steps: Step[]; unmapped: string[] }
   // Awwwards ve ontoplist'te bu, config yazan kişinin elle eklediği
   // label[for=id] tıklamasıydı — artık otomatik üretiliyor.
   for (const cb of analysis.hiddenCheckboxes) {
-    steps.push({ type: 'click', selector: `label[for='${cb.id}']`, optional: true });
+    steps.push({ type: 'click', selector: checkboxLabelSelector(cb.id, cb.selector), optional: true });
   }
 
   // Captcha tespit edildiyse gate ekle; edilmediyse de ekliyoruz çünkü

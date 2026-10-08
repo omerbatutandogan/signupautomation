@@ -5,6 +5,7 @@
  * toplu keşif için yeniden kullanılabilir hale getirildi.
  */
 
+import { idSelector, looksDynamicId } from './selectors.js';
 import type { Page } from 'playwright';
 import type { CaptchaKind, FieldName } from '../core/types.js';
 
@@ -171,12 +172,19 @@ export function mapField(f: RawField): FieldName | null {
   return null;
 }
 
-/** En kararlı selector'ı seçer: id > name > type > aria-label. */
+/**
+ * En kararlı selector'ı seçer: KARARLI id > name > type > aria-label > (son çare) üretilmiş id.
+ *
+ * Üretilmiş (dinamik) id yalnızca başka hiçbir ipucu kalmadığında kullanılır: her yüklemede
+ * değiştiği için kayıt günü bulunamaz (bkz. selectors.ts). Yine de `tag`'dan iyidir,
+ * çünkü sayfada tek alan olabilir.
+ */
 function suggestSelector(f: RawField): string {
-  if (f.id) return `#${f.id}`;
+  if (f.id && !looksDynamicId(f.id)) return idSelector(f.id);
   if (f.name) return `${f.tag}[name='${f.name}']`;
   if (f.tag === 'input' && f.type) return `input[type='${f.type}']`;
   if (f.ariaLabel) return `${f.tag}[aria-label='${f.ariaLabel}']`;
+  if (f.id) return idSelector(f.id);
   return f.tag;
 }
 
@@ -306,7 +314,7 @@ function pickSubmit(visible: RawField[]): string | null {
   if (best.text && signupText.test(best.text)) {
     return `button:has-text('${best.text.replace(/'/g, "\\'")}')`;
   }
-  if (best.id) return `#${best.id}`;
+  if (best.id && !looksDynamicId(best.id)) return idSelector(best.id);
   return "button[type='submit']";
 }
 

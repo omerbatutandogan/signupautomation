@@ -5,6 +5,8 @@
  * filtreleyebilsin. Sınıflar bilerek az ve kalıcı; ayrıntı "Not" kolonunda.
  */
 
+import { looksDynamicId } from './selectors.js';
+
 export const DURUM = {
   READY: 'Hazır',
   BLOCKED: 'Takıldı: elle bakılacak',
@@ -21,16 +23,9 @@ export const DURUM = {
   NOT_SCANNED: 'Taranmadı',
 } as const;
 
-/** id/class değeri her sayfa yüklemesinde ya da yapıda değişiyor gibi mi (UUID, md5, zaman damgası...)? */
+/** id değeri her sayfa yüklemesinde ya da yapıda değişen üretilmiş bir değer gibi mi? (ortak: selectors.ts) */
 export function looksDynamicSelector(selector: string): boolean {
-  const s = selector.replace(/^#/, '');
-  return (
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-/i.test(s) || // UUID
-    /(^|[_-])[0-9a-f]{16,}$/i.test(s) || // md5/sha/uzun hex ("ctrl_4b96fac8...")
-    /^:r[0-9a-z]+:/i.test(s) || // React useId
-    /[_-]\d{6,}$/.test(s) || // zaman damgası ("_xfUid-5-1790795823")
-    /^css-[a-z0-9]{5,}$/i.test(s) // CSS-in-JS sınıfı
-  );
+  return looksDynamicId(selector);
 }
 
 export interface Failure {
@@ -110,7 +105,7 @@ export interface RowInput {
   /** Config durumu; config yoksa null. */
   config: { risk?: string; unverified: boolean; awaitsMove: boolean } | null;
   /** verify-drafts sonucu (varsa). */
-  verification: { status: 'verified' | 'failed' | 'timeout'; note: string; captcha?: string } | null;
+  verification: { status: 'verified' | 'failed' | 'timeout'; note: string; captcha?: string; wall?: boolean; headed?: boolean } | null;
   /** Bu sekmedeki tarama sonucu (config yoksa belirleyici). */
   discovery: string | null;
 }
@@ -137,7 +132,15 @@ export function annotate(input: RowInput): Annotation {
     }
     const v = input.verification;
     if (!v) return { durum: DURUM.DRAFT_UNTESTED, sorun: '', not: 'Config üretildi, canlı dry-run henüz yapılmadı' };
-    const f = classifyFailure(v.note);
+    // Hata sayfası bir bot duvarıysa form sorunu değil duvardır; hangi tarayıcıyla görüldüğü notta.
+    const f = v.wall
+      ? {
+          sorun: 'Bot koruması duvarı (dry-run\'da)',
+          not: v.headed
+            ? 'Görünür tarayıcıda da duvar çıktı; aşılmıyor'
+            : 'Headless dry-run duvara takıldı; görünür tarayıcıyla yeniden denenecek',
+        }
+      : classifyFailure(v.note);
     return { durum: DURUM.DRAFT_FIX, sorun: f.sorun, not: f.not };
   }
 

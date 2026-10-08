@@ -5,6 +5,7 @@
  * JSON'un ifade edemediği durumlar için (overrides/) yazılır.
  */
 
+import { isCheckboxLabelClick } from '../discovery/selectors.js';
 import type { Locator } from 'playwright';
 import {
   classifyPageText,
@@ -196,6 +197,19 @@ async function runStep(ctx: SignupContext, step: Step, index: number): Promise<v
       if (!locator) return;
 
       if (ctx.dryRun) {
+        // İSTİSNA: onay kutusu etiketi. Bu tıklama formu göndermez, yalnızca (görünmez)
+        // kutuyu işaretler; atlanınca sayfa o kutuyu "zorunlu, boş" gösterip doğru bir
+        // config'i yanlışlıkla başarısız sayıyordu (dry-run'ın 19+ yanlış başarısızlığı).
+        // Etiketin İÇİNDEKİ bağlantıya (Şartlar) yanlışlıkla gitmemek için etiket değil,
+        // bağlı olduğu kutunun kendisi DOM üzerinden işaretlenir.
+        if (isCheckboxLabelClick(step.selector ?? '')) {
+          await locator.evaluate((el) => {
+            const control = (el as HTMLLabelElement).control as HTMLInputElement | null;
+            if (control && !control.checked) control.click();
+          });
+          log.info({ selector: step.selector }, 'DRY-RUN: onay kutusu işaretlendi');
+          return;
+        }
         log.info({ selector: step.selector }, 'DRY-RUN: tıklama atlandı');
         return;
       }
@@ -458,9 +472,13 @@ export function makeGenericAdapter(cfg: SiteConfig): SiteAdapter {
       const text = await pageTextForClassification(ctx);
       const classified = classifyPageText(text);
       if (isAlreadyExists(classified)) {
-        return { status: 'already_exists' };
+        // DRY-RUN'da form gönderilmedi: "zaten kayıtlı" metni kayıt sayfasının kendi içeriğidir
+        // ("Already registered? Log in"), bizim hesabımızın varlığı değil. Yok say ve normal
+        // dry-run denetimine geç; aksi halde alan doldurma hiç denetlenmez.
+        if (!ctx.dryRun) return { status: 'already_exists' };
+      } else if (classified) {
+        throw classified;
       }
-      if (classified) throw classified;
 
       return {
         status: 'submitted',

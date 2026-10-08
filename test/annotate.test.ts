@@ -67,6 +67,12 @@ describe('annotate', () => {
     expect(a.durum).toBe(DURUM.BLOCKED);
     expect(annotate({ ...base, blocked: false, config: cfg({ unverified: false }) }).durum).toBe(DURUM.READY);
   });
+  it('başarısızlık sayfası bot duvarıysa form sorunu değil duvar olarak sınıflanır', () => {
+    const wall = { status: 'failed' as const, note: 'Selector bulunamadı: #email', wall: true };
+    expect(annotate({ ...base, config: cfg(), verification: wall }).sorun).toBe("Bot koruması duvarı (dry-run'da)");
+    expect(annotate({ ...base, config: cfg(), verification: wall }).not).toMatch(/görünür tarayıcıyla yeniden/);
+    expect(annotate({ ...base, config: cfg(), verification: { ...wall, headed: true } }).not).toMatch(/aşılmıyor/);
+  });
   it('hiç denenmemiş taslak ayrı', () => {
     expect(annotate({ ...base, config: cfg() }).durum).toBe(DURUM.DRAFT_UNTESTED);
   });

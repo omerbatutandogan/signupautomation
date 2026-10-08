@@ -2,7 +2,7 @@
  * Doğrulanmamış taslak config'leri toplu DRY-RUN ile doğrular.
  *
  *   npx tsx scripts/verify-drafts.ts [--limit N] [--only a,b,c] [--timeout-min 4]
- *                                    [--retry-failed] [--dry-list]
+ *                                    [--retry-failed] [--headed] [--dry-list]
  *
  *   Durdurmak için:  touch data/verify-drafts/STOP   (mevcut site bitince çıkar)
  *
@@ -34,6 +34,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { isUnverified } from '../src/discovery/generate-config.js';
 import { awaitsMoveApproval } from '../src/core/markers.js';
 import { TEMP_PROFILE_PREFIX } from '../src/core/browser.js';
+import { isBotWall } from '../src/discovery/find-signup.js';
 
 const SITES_DIR = 'src/sites';
 const OUT_DIR = 'data/verify-drafts';
@@ -51,6 +52,8 @@ const option = (name: string) => (args.includes(name) ? args[args.indexOf(name) 
 const limit = Number(option('--limit') ?? Infinity);
 const only = option('--only')?.split(',').map((s) => s.trim()).filter(Boolean);
 const timeoutMs = Number(option('--timeout-min') ?? 4) * 60_000;
+/** Görünür tarayıcı: bot duvarı headless'ta çıkıp gerçek (görünür) tarayıcıda çıkmayabiliyor. */
+const headed = flag('--headed');
 if (!(limit > 0) || !(timeoutMs > 0)) {
   console.error('--limit ve --timeout-min pozitif sayı olmalı');
   process.exit(2);
@@ -71,6 +74,10 @@ interface Result {
   note: string;
   /** Dry-run'da görülen captcha türü (gerçek kayıtta çözücü/insan gerekecek). */
   captcha?: string;
+  /** Başarısızlık sayfası bir bot duvarıydı (Cloudflare vb.): form sorunu değil, duvar. */
+  wall?: boolean;
+  /** Tarayıcı görünür miydi? (headless sonuçlar duvara karşı daha duyarlı) */
+  headed?: boolean;
 }
 type Progress = Record<string, Result>;
 
@@ -200,7 +207,7 @@ function runOne(siteId: string): Promise<{ exit: number | null; timedOut: boolea
       // HEADLESS: yüzlerce pencere kullanıcının ekranını ele geçirmesin.
       // CAPTCHA_API_KEY boş: dry-run zaten çözücüyü çağırmaz (kodda), bu İKİNCİ kilit:
       // bir gün o kod değişse bile bu betik ücretli çözücüye erişemez (dotenv var olanı ezmez).
-      env: { ...process.env, HEADLESS: 'true', CAPTCHA_API_KEY: '' },
+      env: { ...process.env, HEADLESS: headed ? 'false' : 'true', CAPTCHA_API_KEY: '' },
     });
     currentChild = child.pid ?? null;
     let timedOut = false;
@@ -223,7 +230,18 @@ function runOne(siteId: string): Promise<{ exit: number | null; timedOut: boolea
 }
 
 /** run-one çıktısındaki sonuç satırı ve nedeni (renk kodları ayıklanır). */
-function summarize(logPath: string): { note: string; captcha?: string } {
+/** run-one'ın yazdığı artifact dizinindeki en son hata sayfası bir bot duvarı mı? */
+function failurePageIsWall(log: string): boolean {
+  const dir = /artifacts: (\S+)/.exec(log)?.[1];
+  if (!dir || !existsSync(dir)) return false;
+  const pages = readdirSync(dir).filter((f) => /^failure-.*\.html$/.test(f));
+  const html = pages[0] ? readFileSync(`${dir}/${pages[0]}`, 'utf8').slice(0, 80_000) : '';
+  const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] ?? '';
+  const text = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  return isBotWall(0, `${title} ${text.slice(0, 4000)}`);
+}
+
+function summarize(logPath: string): { note: string; captcha?: string; wall?: boolean } {
   let text = '';
   try {
     text = stripAnsi(readFileSync(logPath, 'utf8'));
@@ -234,7 +252,7 @@ function summarize(logPath: string): { note: string; captcha?: string } {
   const at = lines.findLastIndex((l) => /^\s*(✅|❌|⏭️)\s/.test(l));
   const note = at >= 0 ? [lines[at], lines[at + 1]].filter(Boolean).join(' | ').replace(/\s+/g, ' ').trim() : 'çıktı yok';
   const cap = /captcha görüldü[\s\S]{0,300}?kind:\s*"?([a-z_0-9]+)/.exec(text);
-  return { note: note.slice(0, 400), ...(cap?.[1] ? { captcha: cap[1] } : {}) };
+  return { note: note.slice(0, 400), ...(cap?.[1] ? { captcha: cap[1] } : {}), ...(failurePageIsWall(text) ? { wall: true } : {}) };
 }
 
 function isStillUnverified(siteId: string): boolean {
@@ -335,7 +353,7 @@ async function main(): Promise<number> {
     const wasUnverified = isStillUnverified(id);
     const { exit, timedOut, logPath } = await runOne(id);
     cleanTempProfiles(); // normal çıkışta boştur; kill sonrası artıkları siler
-    const { note, captcha } = summarize(logPath);
+    const { note, captcha, wall } = summarize(logPath);
     const status: Status = timedOut ? 'timeout' : wasUnverified && !isStillUnverified(id) ? 'verified' : 'failed';
     progress[id] = {
       status,
@@ -343,11 +361,13 @@ async function main(): Promise<number> {
       seconds: Math.round((Date.now() - t0) / 1000),
       note: timedOut ? `zaman aşımı (${timeoutMs / 60_000} dk) — süreç öldürüldü` : `${note}${exit !== 0 && status === 'failed' ? ` (çıkış ${exit})` : ''}`,
       ...(captcha ? { captcha } : {}),
+      ...(status !== 'verified' && wall ? { wall: true } : {}),
+      ...(headed ? { headed: true } : {}),
     };
     saveProgress(progress);
     done++;
 
-    const icon = status === 'verified' ? '✅' : status === 'timeout' ? '⏱️ ' : '❌';
+    const icon = status === 'verified' ? '✅' : status === 'timeout' ? '⏱️ ' : progress[id]!.wall ? '🧱' : '❌';
     console.log(`${icon} [${done}/${todo.length}] ${id} (${progress[id]!.seconds}s)${captcha ? ` captcha:${captcha}` : ''}${status === 'verified' ? '' : ` — ${progress[id]!.note.slice(0, 140)}`}`);
 
     if (done % 25 === 0) {
