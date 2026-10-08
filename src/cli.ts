@@ -58,6 +58,10 @@ Komutlar:
     --no-wait             Siteler arası beklemeyi atla (test için)
     --include-unverified  Doğrulanmamış taslakları da çalıştır (riskli)
   status                  Son denemeler ve ledger özeti
+  submit <siteId>         Giriş yapıp ürünü sitenin listeleme formuna girer (varsayılan DRY-RUN: göndermez)
+    --live                Gerçekten gönder — ürün profilinin onaylı olması gerekir (approve-profile)
+    --force               Daha önce tamamlanmış gerçek gönderimi yeniden dene
+  approve-profile <ürün>  Ürün bilgisini HERKESE AÇIK listeleme için onayla (profil değişirse geçersiz olur)
   list                    Tanımlı site config'lerini listele
   unlock <siteId>         Takılı kilidi temizle
   password <siteId>       Türetilmiş şifreyi yazdır
@@ -355,6 +359,43 @@ function sleepMinutes(min: number, max: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+async function cmdSubmit(siteId: string, flags: Set<string>, productId: string): Promise<number> {
+  const { submitListing } = await import('./core/submitter.js');
+  const dryRun = !flags.has('--live');
+  const ledger = new Ledger();
+  try {
+    console.log(`\n📝 ${accountKey(productId, siteId)} listeleme ${dryRun ? '(DRY-RUN: göndermez)' : '(GERÇEK GÖNDERİM)'}`);
+    const outcome = await submitListing(siteId, { log: logger, ledger, dryRun, force: flags.has('--force'), productId });
+    const icon = outcome.status === 'completed' ? '✅' : outcome.status.startsWith('skipped') ? '⏭️' : '❌';
+    console.log(`\n${icon} ${outcome.status}`);
+    if (outcome.note) console.log(`   ${outcome.note}`);
+    if (outcome.listingUrl) console.log(`   ${outcome.listingUrl}`);
+    if (outcome.artifactsDir) console.log(`   artifacts: ${outcome.artifactsDir}`);
+    return outcome.status === 'completed' || outcome.status.startsWith('skipped') ? 0 : 1;
+  } finally {
+    ledger.close();
+  }
+}
+
+async function cmdApproveProfile(productId: string): Promise<number> {
+  const { approveProfile } = await import('./core/listing-approval.js');
+  const profile = await loadProfile(productId);
+  console.log(`\n${productId} — herkese açık yayınlanacak bilgiler:\n`);
+  console.log(`  Ürün adı     : ${profile.companyName}`);
+  console.log(`  Şirket/yasal : ${profile.legalName}`);
+  console.log(`  Site         : ${profile.website}`);
+  console.log(`  Slogan       : ${profile.tagline}`);
+  console.log(`  Kısa açıklama: ${profile.descriptions.short}`);
+  console.log(`  Orta açıklama: ${profile.descriptions.medium}`);
+  console.log(`  Kategori     : ${profile.category.primary} (${profile.category.aliases.join(', ')})`);
+  console.log(`  İletişim     : ${profile.contact.firstName} ${profile.contact.lastName}, ${profile.contact.role}, ${profile.contact.email}`);
+  console.log(`  Fiyat        : ${profile.pricing} · Kuruluş: ${profile.foundedYear}`);
+  console.log(`  Sosyal       : ${JSON.stringify(profile.socials)}`);
+  const rec = await approveProfile(productId, profile);
+  console.log(`\n✅ Bu içerik listeleme için onaylandı (${rec.sha256.slice(0, 12)}…). Profil değişirse onay geçersiz olur.`);
+  return 0;
+}
+
 async function cmdRunBatch(flags: Set<string>, positional: string[]): Promise<number> {
   const { SheetClient } = await import('./integrations/sheet.js');
   const { loadSiteConfig } = await import('./adapters/registry.js');
@@ -533,6 +574,20 @@ async function main(): Promise<void> {
         break;
       }
       code = await cmdRunOne(siteId, flags, productId);
+      break;
+    }
+    case 'submit': {
+      const siteId = positional[0];
+      if (!siteId) {
+        console.error('Site id gerekli: npm run cli -- submit <siteId> [--live]');
+        code = 1;
+        break;
+      }
+      code = await cmdSubmit(siteId, flags, productId);
+      break;
+    }
+    case 'approve-profile': {
+      code = await cmdApproveProfile(positional[0] ?? productId);
       break;
     }
     case 'signup': {

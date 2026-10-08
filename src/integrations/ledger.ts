@@ -90,6 +90,22 @@ export class Ledger {
         profile_url TEXT
       );
 
+      -- Listeleme (submission) denemeleri. attempts'ten AYRI: attempts hesap AÇMA sonucunu
+      -- tutar ve terminal sonuçlar yeniden denemeyi engeller; listeleme aynı anahtarı
+      -- kullansaydı hesap kaydını ve paneldeki hesap türetmesini bozardı.
+      CREATE TABLE IF NOT EXISTS submissions (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        account_key TEXT NOT NULL,
+        run_id      TEXT NOT NULL,
+        status      TEXT NOT NULL,
+        dry_run     INTEGER NOT NULL DEFAULT 0,
+        started_at  INTEGER NOT NULL,
+        finished_at INTEGER,
+        note        TEXT,
+        listing_url TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_submissions_account ON submissions(account_key);
+
       CREATE TABLE IF NOT EXISTS seen_messages (
         message_id TEXT PRIMARY KEY,
         site_id    TEXT NOT NULL,
@@ -141,6 +157,15 @@ export class Ledger {
         `UPDATE attempts SET status = 'error', finished_at = ?, note = 'süreç yarıda kesildi'
          WHERE status = 'running'
            AND site_id NOT IN (SELECT site_id FROM locks)`,
+      )
+      .run(now);
+
+    // Listeleme için aynı kural (kilit anahtarı "<hesap>#submit").
+    this.db
+      .prepare(
+        `UPDATE submissions SET status = 'error', finished_at = ?, note = 'süreç yarıda kesildi'
+         WHERE status = 'running'
+           AND (account_key || '#submit') NOT IN (SELECT site_id FROM locks)`,
       )
       .run(now);
 
@@ -239,6 +264,54 @@ export class Ledger {
     return this.db
       .prepare('SELECT * FROM attempts ORDER BY started_at DESC LIMIT ?')
       .all(limit) as unknown as AttemptRow[];
+  }
+
+  // ── Listeleme (submission) ──────────────────────────────────────────────
+
+  startSubmission(accountKey: SiteId, runId: string, dryRun = false): number {
+    const res = this.db
+      .prepare(
+        `INSERT INTO submissions (account_key, run_id, status, dry_run, started_at)
+         VALUES (?, ?, 'running', ?, ?)`,
+      )
+      .run(accountKey, runId, dryRun ? 1 : 0, Date.now());
+    return Number(res.lastInsertRowid);
+  }
+
+  finishSubmission(id: number, status: string, note?: string, listingUrl?: string): void {
+    this.db
+      .prepare('UPDATE submissions SET status = ?, finished_at = ?, note = ?, listing_url = ? WHERE id = ?')
+      .run(status, Date.now(), note ?? null, listingUrl ?? null, id);
+  }
+
+  /**
+   * Bu hesapla GERÇEK (dry-run olmayan) bir gönderim yapılmış mı — tamamlanmış YA DA
+   * sonucu doğrulanamamış ('unconfirmed')? İkisi de ürünü yayınlamış olabilir; otomatik
+   * yeniden deneme çift listelemeye yol açar, bu yüzden ikisi de engeller.
+   */
+  liveSubmission(accountKey: SiteId): { status: string; listing_url: string | null; finished_at: number } | null {
+    const row = this.db
+      .prepare(
+        `SELECT status, listing_url, finished_at FROM submissions
+         WHERE account_key = ? AND dry_run = 0 AND status IN ('completed', 'unconfirmed')
+         ORDER BY finished_at DESC LIMIT 1`,
+      )
+      .get(accountKey) as { status: string; listing_url: string | null; finished_at: number } | undefined;
+    return row ?? null;
+  }
+
+  recentSubmissions(limit = 20): Array<{
+    id: number;
+    account_key: string;
+    status: string;
+    dry_run: number;
+    started_at: number;
+    note: string | null;
+    listing_url: string | null;
+  }> {
+    return this.db
+      .prepare('SELECT id, account_key, status, dry_run, started_at, note, listing_url FROM submissions ORDER BY started_at DESC LIMIT ?')
+      .all(limit) as never;
   }
 
   // ── Kimlik bilgileri ────────────────────────────────────────────────────

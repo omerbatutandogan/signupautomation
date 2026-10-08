@@ -424,7 +424,7 @@ async function loadSiteConfigFor(adapter: { id: string }) {
  * DOM izleyici sayesinde insan captcha'yı çözünce otomatik devam ediyor —
  * terminale bir şey yazmaya gerek kalmıyor.
  */
-function makeCaptchaHandler(
+export function makeCaptchaHandler(
   page: Awaited<ReturnType<typeof launchContext>>['page'],
   log: Logger,
 ): (kind: CaptchaKind, shot: string) => Promise<void> {
