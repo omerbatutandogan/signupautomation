@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { annotate, classifyFailure, looksDynamicSelector, DURUM } from '../src/discovery/annotate.js';
+import { annotate, classifyFailure, looksDynamicSelector, readyTable, DURUM } from '../src/discovery/annotate.js';
 
 /**
  * Sheet'e yazılacak sınıflar. Gerçek verify-drafts çıktılarından (2026-10-06):
@@ -61,6 +61,12 @@ describe('annotate', () => {
     const a = annotate({ ...base, config: cfg(), verification: { status: 'failed', note: 'Selector bulunamadı: #_xfUid-5-1790795823' } });
     expect(a).toMatchObject({ durum: DURUM.DRAFT_FIX, sorun: 'Form alan kimliği dinamik (her açılışta değişiyor)' });
   });
+  it('doğrulanmış ama son gerçek denemesi terminal biten site "Hazır" değil, takılı', () => {
+    // alternativeto: dry-run geçti ama gerçek deneme "Selector bulunamadı" ile kesin bitti.
+    const a = annotate({ ...base, blocked: true, config: cfg({ unverified: false }) });
+    expect(a.durum).toBe(DURUM.BLOCKED);
+    expect(annotate({ ...base, blocked: false, config: cfg({ unverified: false }) }).durum).toBe(DURUM.READY);
+  });
   it('hiç denenmemiş taslak ayrı', () => {
     expect(annotate({ ...base, config: cfg() }).durum).toBe(DURUM.DRAFT_UNTESTED);
   });
@@ -73,5 +79,26 @@ describe('annotate', () => {
     expect(d('high_risk')).toBe(DURUM.TOS);
     expect(d('error')).toBe(DURUM.SCAN_ERROR);
     expect(d(null)).toBe(DURUM.NOT_SCANNED);
+  });
+});
+
+describe('readyTable', () => {
+  const l = (tab: string, rowNumber: number, siteId: string, website = `https://${siteId}.com`) => ({ tab, rowNumber, siteId, website });
+  const ready = [
+    { siteId: 'zeta', signupUrl: 'https://zeta.com/join', captcha: 'hcaptcha' },
+    { siteId: 'alpha', signupUrl: 'https://alpha.com/signup', captcha: '' },
+    { siteId: 'orphan', signupUrl: 'https://orphan.com/x', captcha: '' },
+  ];
+
+  it('siteyi bir kez yazar, geçtiği sekmeleri ve satırları yanına ekler; ada göre sıralar', () => {
+    const rows = [l('Forums', 40, 'alpha'), l('Deals ', 7, 'alpha'), l('SaaS', 2, 'zeta')];
+    expect(readyTable(ready, rows)).toEqual([
+      ['https://alpha.com', 'https://alpha.com/signup', '', 'Deals (7), Forums (40)'],
+      ['https://zeta.com', 'https://zeta.com/join', 'hcaptcha', 'SaaS (2)'],
+    ]);
+  });
+
+  it('Sheet\'te hiç satırı olmayan config\'i listeye almaz', () => {
+    expect(readyTable(ready, [l('SaaS', 2, 'alpha')]).map((r) => r[0])).toEqual(['https://alpha.com']);
   });
 });

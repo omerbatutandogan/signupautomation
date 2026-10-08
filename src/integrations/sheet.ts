@@ -390,6 +390,37 @@ export class SheetClient {
     return { addedHeaders: missing, written: rows.length };
   }
 
+  /**
+   * Bir sekmeyi (yoksa oluşturur) verilen tabloyla BAŞTAN yazar: önce temizler, sonra
+   * başlık + satırlar. Yalnızca bu kodun sahip olduğu özet sekmeleri için (ör.
+   * "Hazır Siteler"); kaynak sekmelere ASLA uygulanmaz. İlk satır dondurulur.
+   */
+  async writeTable(title: string, header: string[], rows: string[][]): Promise<{ created: boolean }> {
+    const meta = await this.api.spreadsheets.get({
+      spreadsheetId: this.spreadsheetId,
+      fields: 'sheets.properties(sheetId,title)',
+    });
+    let sheetId = meta.data.sheets?.find((s) => s.properties?.title === title)?.properties?.sheetId ?? null;
+    const created = sheetId === null;
+    if (created) {
+      const res = await this.api.spreadsheets.batchUpdate({
+        spreadsheetId: this.spreadsheetId,
+        requestBody: { requests: [{ addSheet: { properties: { title, gridProperties: { frozenRowCount: 1 } } } }] },
+      });
+      sheetId = res.data.replies?.[0]?.addSheet?.properties?.sheetId ?? null;
+    }
+
+    const tab = quoteTab(title);
+    await this.api.spreadsheets.values.clear({ spreadsheetId: this.spreadsheetId, range: tab });
+    await this.api.spreadsheets.values.update({
+      spreadsheetId: this.spreadsheetId,
+      range: `${tab}!A1`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [header, ...rows] },
+    });
+    return { created };
+  }
+
   async writeRisk(row: SheetRow, risk: RiskLevel): Promise<void> {
     await this.writeCell(row.rowNumber, COLUMNS.risk, risk);
   }

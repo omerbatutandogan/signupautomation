@@ -50,6 +50,11 @@ async function main(): Promise<number> {
   const withAccount = new Set(
     (db.prepare("SELECT DISTINCT site_id FROM attempts WHERE status = 'completed' AND dry_run = 0 AND site_id NOT LIKE '%@%'").all() as Array<{ site_id: string }>).map((r) => r.site_id),
   );
+  const blockedIds = new Set(
+    (db.prepare("SELECT DISTINCT site_id FROM attempts WHERE terminal = 1 AND dry_run = 0 AND site_id NOT LIKE '%@%'").all() as Array<{ site_id: string }>)
+      .map((r) => r.site_id)
+      .filter((id) => !withAccount.has(id)),
+  );
   db.close();
 
   const rows = await sheet.readAll();
@@ -57,6 +62,7 @@ async function main(): Promise<number> {
   const out = rows.map((row) => {
     const a = annotate({
       hasAccount: withAccount.has(row.siteId),
+      blocked: blockedIds.has(row.siteId),
       config: configs.get(row.siteId) ?? null,
       verification: verification[row.siteId] ?? null,
       discovery: discovery[row.siteId]?.outcome ?? null,

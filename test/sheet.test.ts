@@ -132,3 +132,38 @@ describe('SheetClient.writeAnnotations', () => {
     expect(data).toEqual(["'Deals '!B3", "'Deals '!D3"]);
   });
 });
+
+describe('SheetClient.writeTable', () => {
+  async function client(existingTitles: string[]) {
+    const { SheetClient } = await import('../src/integrations/sheet.js');
+    const calls: string[] = [];
+    const api = {
+      spreadsheets: {
+        get: async () => ({ data: { sheets: existingTitles.map((title, i) => ({ properties: { title, sheetId: i + 10 } })) } }),
+        batchUpdate: async (req: { requestBody: { requests: Array<{ addSheet?: { properties: { title: string } } }> } }) => {
+          calls.push(`add:${req.requestBody.requests[0]?.addSheet?.properties.title}`);
+          return { data: { replies: [{ addSheet: { properties: { sheetId: 99 } } }] } };
+        },
+        values: {
+          clear: async (req: { range: string }) => void calls.push(`clear:${req.range}`),
+          update: async (req: { range: string; requestBody: { values: string[][] } }) =>
+            void calls.push(`update:${req.range}:${req.requestBody.values.length}`),
+        },
+      },
+    };
+    const Ctor = SheetClient as unknown as new (...a: unknown[]) => { writeTable: SheetClientType['writeTable'] };
+    return { c: new Ctor(api, 'sheet-id', 'SaaS', { warn() {} }, new Map(), 'Website', null), calls };
+  }
+
+  it('sekme yoksa oluşturur, temizler ve başlık + satırları yazar', async () => {
+    const { c, calls } = await client(['SaaS', 'Forums']);
+    expect(await c.writeTable('Hazır Siteler', ['Site'], [['a'], ['b']])).toEqual({ created: true });
+    expect(calls).toEqual(['add:Hazır Siteler', "clear:'Hazır Siteler'", "update:'Hazır Siteler'!A1:3"]);
+  });
+
+  it('sekme varsa yeniden oluşturmaz; eski içeriği temizleyip baştan yazar (tekrar çalıştırma güvenli)', async () => {
+    const { c, calls } = await client(['SaaS', 'Hazır Siteler']);
+    expect(await c.writeTable('Hazır Siteler', ['Site'], [['a']])).toEqual({ created: false });
+    expect(calls).toEqual(["clear:'Hazır Siteler'", "update:'Hazır Siteler'!A1:2"]);
+  });
+});
