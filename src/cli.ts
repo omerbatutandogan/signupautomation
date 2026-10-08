@@ -59,8 +59,9 @@ Komutlar:
     --include-unverified  Doğrulanmamış taslakları da çalıştır (riskli)
   status                  Son denemeler ve ledger özeti
   submit <siteId>         Giriş yapıp ürünü sitenin listeleme formuna girer (varsayılan DRY-RUN: göndermez)
-    --live                Gerçekten gönder — ürün profilinin onaylı olması gerekir (approve-profile)
-    --force               Daha önce tamamlanmış gerçek gönderimi yeniden dene
+    --live                Gerçekten gönder — ürün profilinin ve logo dosyalarının onaylı olması gerekir (approve-profile)
+    --force               Daha önce tamamlanmış ya da sonucu doğrulanamamış gönderimi yeniden dene
+                          (günlük listeleme sınırını aşmaz)
   approve-profile <ürün>  Ürün bilgisini ve logo dosyalarını HERKESE AÇIK listeleme için onayla
                           (etkileşimli terminal + yazılı onay ister; içerik değişirse geçersiz olur)
   list                    Tanımlı site config'lerini listele
@@ -261,18 +262,30 @@ function cmdStatus(): number {
   const ledger = new Ledger();
   try {
     const attempts = ledger.recentAttempts(15);
-    if (attempts.length === 0) {
+    const submissions = ledger.recentSubmissions(10);
+    if (attempts.length === 0 && submissions.length === 0) {
       console.log('Henüz hiç deneme yok.');
       return 0;
     }
 
-    console.log(`\nBugün: ${ledger.countToday()}/${env.DAILY_LIMIT} deneme\n`);
-    console.log('Son denemeler:');
-    for (const a of attempts) {
-      const when = new Date(a.started_at).toLocaleString('tr-TR');
-      const dur = a.finished_at ? `${Math.round((a.finished_at - a.started_at) / 1000)}s` : '—';
-      console.log(`  ${when}  ${a.site_id.padEnd(18)} ${a.status.padEnd(18)} ${dur}`);
-      if (a.note) console.log(`    ↳ ${a.note.slice(0, 100)}`);
+    if (attempts.length > 0) {
+      console.log(`\nBugün: ${ledger.countToday()}/${env.DAILY_LIMIT} deneme\n`);
+      console.log('Son denemeler:');
+      for (const a of attempts) {
+        const when = new Date(a.started_at).toLocaleString('tr-TR');
+        const dur = a.finished_at ? `${Math.round((a.finished_at - a.started_at) / 1000)}s` : '—';
+        console.log(`  ${when}  ${a.site_id.padEnd(18)} ${a.status.padEnd(18)} ${dur}`);
+        if (a.note) console.log(`    ↳ ${a.note.slice(0, 100)}`);
+      }
+    }
+    if (submissions.length > 0) {
+      console.log(`\nBugün gerçek listeleme: ${ledger.countLiveSubmissionsToday()}/${env.DAILY_LIMIT}\n`);
+      console.log('Son listelemeler:');
+      for (const sub of submissions) {
+        const when = new Date(sub.started_at).toLocaleString('tr-TR');
+        console.log(`  ${when}  ${sub.account_key.padEnd(18)} ${sub.status.padEnd(18)} ${sub.dry_run ? 'dry-run' : 'GERÇEK'}`);
+        if (sub.note) console.log(`    ↳ ${sub.note.slice(0, 100)}`);
+      }
     }
     return 0;
   } finally {
@@ -367,12 +380,14 @@ async function cmdSubmit(siteId: string, flags: Set<string>, productId: string):
   try {
     console.log(`\n📝 ${accountKey(productId, siteId)} listeleme ${dryRun ? '(DRY-RUN: göndermez)' : '(GERÇEK GÖNDERİM)'}`);
     const outcome = await submitListing(siteId, { log: logger, ledger, dryRun, force: flags.has('--force'), productId });
-    const icon = outcome.status === 'completed' ? '✅' : outcome.status.startsWith('skipped') ? '⏭️' : '❌';
+    const icon = outcome.status === 'completed' ? '✅' : outcome.status === 'unconfirmed' ? '⚠️ ' : outcome.status.startsWith('skipped') ? '⏭️' : '❌';
     console.log(`\n${icon} ${outcome.status}`);
     if (outcome.note) console.log(`   ${outcome.note}`);
     if (outcome.listingUrl) console.log(`   ${outcome.listingUrl}`);
     if (outcome.artifactsDir) console.log(`   artifacts: ${outcome.artifactsDir}`);
-    return outcome.status === 'completed' || outcome.status.startsWith('skipped') ? 0 : 1;
+    // Betik/zincir çağrılarında başarı yalnızca gerçekten tamamlanma (ya da zaten listelenmiş
+    // olma) demektir: onaysız/hesapsız/kilitli atlamalar ve doğrulanamayan gönderim 0 DÖNMEZ.
+    return outcome.status === 'completed' || outcome.status === 'skipped_done' ? 0 : 1;
   } finally {
     ledger.close();
   }

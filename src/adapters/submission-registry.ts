@@ -17,7 +17,11 @@ export async function loadSubmissionConfig(siteId: string, dir = SUBMISSIONS_DIR
   } catch (err) {
     throw new Error(`${path} geçerli JSON değil: ${(err as Error).message}`);
   }
-  return parseSubmissionConfig(json, path);
+  const config = parseSubmissionConfig(json, path);
+  // Dosya adı hesabın/kilidin/ledger'ın anahtarıdır; içindeki id başka bir siteyi gösteriyorsa
+  // yanlış sitenin kimlik bilgileriyle işlem yapılırdı.
+  if (config.id !== siteId) throw new Error(`${path}: config id "${config.id}" dosya adıyla ("${siteId}") uyuşmuyor`);
+  return config;
 }
 
 export async function listSubmissionIds(dir = SUBMISSIONS_DIR): Promise<string[]> {

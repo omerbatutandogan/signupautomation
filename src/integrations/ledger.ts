@@ -160,10 +160,17 @@ export class Ledger {
       )
       .run(now);
 
-    // Listeleme için aynı kural (kilit anahtarı "<hesap>#submit").
+    // Listeleme için aynı kural (kilit anahtarı "<hesap>#submit") — ama sonuç FARKLI:
+    // yarıda kesilen GERÇEK gönderim 'error' (yeniden denenebilir) değil 'unconfirmed'
+    // olur. Süreç gönderim tıklandıktan sonra ölmüş olabilir; ürün yayınlanmış olabilir ve
+    // otomatik yeniden deneme çift listeleme yapardı. Yarıda kesilen DRY-RUN zararsızdır.
     this.db
       .prepare(
-        `UPDATE submissions SET status = 'error', finished_at = ?, note = 'süreç yarıda kesildi'
+        `UPDATE submissions
+           SET status = CASE WHEN dry_run = 1 THEN 'error' ELSE 'unconfirmed' END,
+               finished_at = ?,
+               note = CASE WHEN dry_run = 1 THEN 'süreç yarıda kesildi'
+                           ELSE 'süreç yarıda kesildi — yayınlanmış olabilir, elle kontrol et' END
          WHERE status = 'running'
            AND (account_key || '#submit') NOT IN (SELECT site_id FROM locks)`,
       )
@@ -285,19 +292,32 @@ export class Ledger {
   }
 
   /**
-   * Bu hesapla GERÇEK (dry-run olmayan) bir gönderim yapılmış mı — tamamlanmış YA DA
-   * sonucu doğrulanamamış ('unconfirmed')? İkisi de ürünü yayınlamış olabilir; otomatik
-   * yeniden deneme çift listelemeye yol açar, bu yüzden ikisi de engeller.
+   * Bu hesapla GERÇEK (dry-run olmayan) bir gönderim YAPILMIŞ OLABİLİR mi?
+   *
+   * Varsayılan ENGELLE: yalnızca 'failed' (hiçbir şeyin gönderilmediği kesin olan) satır
+   * engellemez. 'completed', 'unconfirmed', hâlâ 'running' (süreç ölmüş olabilir),
+   * 'error' ve her bilinmeyen durum engeller. Beyaz liste değil kara liste: yeni bir durum
+   * eklenirse yanlışlıkla çift yayına izin vermesin.
    */
-  liveSubmission(accountKey: SiteId): { status: string; listing_url: string | null; finished_at: number } | null {
+  liveSubmission(accountKey: SiteId): { status: string; listing_url: string | null; finished_at: number | null } | null {
     const row = this.db
       .prepare(
         `SELECT status, listing_url, finished_at FROM submissions
-         WHERE account_key = ? AND dry_run = 0 AND status IN ('completed', 'unconfirmed')
-         ORDER BY finished_at DESC LIMIT 1`,
+         WHERE account_key = ? AND dry_run = 0 AND status != 'failed'
+         ORDER BY (status = 'completed') DESC, started_at DESC LIMIT 1`,
       )
-      .get(accountKey) as { status: string; listing_url: string | null; finished_at: number } | undefined;
+      .get(accountKey) as { status: string; listing_url: string | null; finished_at: number | null } | undefined;
     return row ?? null;
+  }
+
+  /** Bugün başlatılan GERÇEK gönderim sayısı (kayıtlarla aynı günlük hız sınırı mantığı). */
+  countLiveSubmissionsToday(): number {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const row = this.db
+      .prepare('SELECT COUNT(*) AS n FROM submissions WHERE dry_run = 0 AND started_at >= ?')
+      .get(startOfDay.getTime()) as { n: number };
+    return row.n;
   }
 
   recentSubmissions(limit = 20): Array<{

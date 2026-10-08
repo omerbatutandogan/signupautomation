@@ -13,7 +13,8 @@
 import { z } from 'zod';
 import { StepSchema } from './schema.js';
 
-export const SubmissionConfigSchema = z.object({
+export const SubmissionConfigSchema = z
+  .object({
   id: z.string().min(1).regex(/^[a-z0-9-]+$/, 'id yalnızca küçük harf, rakam ve tire içerebilir'),
   name: z.string().min(1),
   /** Listeleme formunun adresi (giriş yapılmış hesapla açılır). */
@@ -45,7 +46,23 @@ export const SubmissionConfigSchema = z.object({
       message: 'success.anyOf ya da success.urlContains verilmeli',
     }),
   notes: z.string().optional(),
-});
+  })
+  .superRefine((cfg, ctx) => {
+    // Giriş tanımlıysa "giriş yapıldı mı?" işareti ZORUNLU: yanlış şifre ya da engelli hesap
+    // sessizce giriş yapılmamış formu doldurmaya yol açmasın.
+    if (cfg.login && !cfg.loggedIn) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['loggedIn'], message: 'login tanımlıysa loggedIn (giriş işareti) zorunlu' });
+    }
+    if (cfg.login && cfg.login.url === cfg.listingUrl) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['login', 'url'], message: 'login.url, listingUrl ile aynı olamaz (dry-run girişi ile gönderim ayrılamaz)' });
+    }
+    // Zaten adreste bulunan bir parça "başarı" kanıtı olamaz: gönderim yapılmadan da tutar.
+    for (const fragment of cfg.success.urlContains ?? []) {
+      if (cfg.listingUrl.includes(fragment)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['success', 'urlContains'], message: `"${fragment}" listingUrl içinde zaten var: başarı kanıtı olamaz` });
+      }
+    }
+  });
 
 export type ValidatedSubmissionConfig = z.infer<typeof SubmissionConfigSchema>;
 

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
 import pino from 'pino';
-import { makeGenericAdapter } from '../src/adapters/generic.js';
+import { makeGenericAdapter, runSteps } from '../src/adapters/generic.js';
 import { parseSiteConfig } from '../src/adapters/schema.js';
 import { checkDryRunPage } from '../src/core/dry-run-check.js';
 import { checkboxLabelSelector, isCheckboxLabelClick, looksDynamicId } from '../src/discovery/selectors.js';
@@ -168,6 +168,45 @@ describe('dry-run: etiket bir onay kutusuna bağlı DEĞİLSE dokunulmaz', () =>
     const site = config([{ type: 'click', selector: "label[for='go']" }]);
     await makeGenericAdapter(site).signup(context(site, true));
     expect(await page.evaluate(() => (document.getElementById('go') as HTMLInputElement).checked)).toBe(true);
+  }, 30_000);
+});
+
+describe('runSteps — beforeClick kancası', () => {
+  const PAGE = `<form id="f"><button id="a" type="button">A</button><button id="b" type="button">B</button></form>
+    <script>window.__clicks = []; for (const id of ['a','b']) document.getElementById(id).addEventListener('click', () => window.__clicks.push(id));</script>`;
+  const clicks = () => page.evaluate(() => (window as unknown as { __clicks: string[] }).__clicks);
+
+  it('gerçek tıklamadan ÖNCE çağrılır (tıklama o anda henüz yapılmamıştır)', async () => {
+    await page.setContent(PAGE);
+    const site = config([{ type: 'click', selector: '#a' }, { type: 'click', selector: '#b' }]);
+    const seen: Array<{ selector: string | undefined; clicksSoFar: string[] }> = [];
+    await runSteps(context(site, false), site.steps, {
+      beforeClick: async (step) => void seen.push({ selector: step.selector, clicksSoFar: await clicks() }),
+    });
+    expect(seen).toEqual([
+      { selector: '#a', clicksSoFar: [] },
+      { selector: '#b', clicksSoFar: ['a'] },
+    ]);
+  }, 30_000);
+
+  it('kanca fırlatırsa tıklama YAPILMAZ', async () => {
+    await page.setContent(PAGE);
+    const site = config([{ type: 'click', selector: '#a' }]);
+    await expect(
+      runSteps(context(site, false), site.steps, { beforeClick: () => { throw new Error('iptal'); } }),
+    ).rejects.toThrow('iptal');
+    expect(await clicks()).toEqual([]);
+  }, 30_000);
+
+  it("dry-run'da çağrılmaz (tıklama zaten atlanır) ve öğe bulunamazsa da çağrılmaz", async () => {
+    await page.setContent(PAGE);
+    const hook = vi.fn();
+    const dry = config([{ type: 'click', selector: '#a' }]);
+    await runSteps(context(dry, true), dry.steps, { beforeClick: hook });
+    const missing = config([{ type: 'click', selector: '#yok', timeoutMs: 300 }]);
+    await expect(runSteps(context(missing, false), missing.steps, { beforeClick: hook })).rejects.toThrow(/Selector bulunamadı/);
+    expect(hook).not.toHaveBeenCalled();
+    expect(await clicks()).toEqual([]);
   }, 30_000);
 });
 

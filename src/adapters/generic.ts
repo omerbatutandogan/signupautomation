@@ -81,7 +81,7 @@ async function locate(ctx: SignupContext, selector: string, timeoutMs: number): 
 }
 
 /** Bir adımı yürütür. */
-async function runStep(ctx: SignupContext, step: Step, index: number): Promise<void> {
+async function runStep(ctx: SignupContext, step: Step, index: number, hooks: StepHooks): Promise<void> {
   const timeoutMs = step.timeoutMs ?? DEFAULT_STEP_TIMEOUT;
   const log = ctx.log.child({ step: index, type: step.type });
 
@@ -218,6 +218,9 @@ async function runStep(ctx: SignupContext, step: Step, index: number): Promise<v
         return;
       }
 
+      // Öğe bulundu, tıklama GERÇEKTEN yapılacak: çağıran taraf (listeleme) "gönderim artık
+      // yapılmış olabilir" bilgisini tam burada alır; fırlatırsa tıklama hiç yapılmaz.
+      await hooks.beforeClick?.(step, index);
       await moveMouseTo(ctx.page, locator);
       await locator.click();
       return;
@@ -459,6 +462,26 @@ async function tryLocate(
   }
 }
 
+export interface StepHooks {
+  /**
+   * GERÇEK bir tıklamadan hemen önce çağrılır (öğe bulunmuş, dry-run değil). Burada fırlatmak
+   * tıklamayı engeller. Listeleme akışı "gönderim artık yapılmış olabilir" bilgisini buradan alır.
+   */
+  beforeClick?(step: Step, index: number): void | Promise<void>;
+}
+
+/**
+ * Adımları sırayla yürütür; kayıt-sayfası sezgileri (zaten kayıtlı / telefon istiyor gibi
+ * sayfa metni sınıflandırması) UYGULANMAZ. Giriş ve listeleme sayfalarında o sezgiler yanlış
+ * pozitif verir ("Phone number" etiketi, teşekkür sayfasındaki metin); başarıyı config'in
+ * kendi işaretleri belirler.
+ */
+export async function runSteps(ctx: SignupContext, steps: readonly Step[], hooks: StepHooks = {}): Promise<void> {
+  for (const [index, step] of steps.entries()) {
+    await runStep(ctx, step, index, hooks);
+  }
+}
+
 export function makeGenericAdapter(cfg: SiteConfig): SiteAdapter {
   return {
     id: cfg.id,
@@ -468,9 +491,7 @@ export function makeGenericAdapter(cfg: SiteConfig): SiteAdapter {
     verification: cfg.verification,
 
     async signup(ctx: SignupContext): Promise<SignupResult> {
-      for (const [index, step] of cfg.steps.entries()) {
-        await runStep(ctx, step, index);
-      }
+      await runSteps(ctx, cfg.steps);
 
       // Submit sonrası sayfa metni "zaten kayıtlı" diyor olabilir.
       const text = await pageTextForClassification(ctx);

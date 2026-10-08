@@ -3,15 +3,23 @@
  *
  * Sıra: kapılar → kilit → giriş → form adımları → (dry-run: denetle | gerçek: gönder ve
  * başarıyı doğrula). Gerçek gönderim ürünü HERKESE AÇIK yayınlar; bu yüzden varsayılan
- * dry-run'dır ve gerçek gönderim için profil içeriğinin insan onayı gerekir
- * (core/listing-approval.ts).
+ * dry-run'dır ve gerçek gönderim için profil içeriğinin (logo dosyaları dahil) insan onayı
+ * gerekir (core/listing-approval.ts).
+ *
+ * İki ilke her şeyin önündedir:
+ *  - ÇİFT YAYIN YOK: gönderimin yapılmış OLABİLECEĞİ andan sonra (ilk gerçek tıklama ya da
+ *    siteye giden ilk yazan istek) hiçbir hata 'failed' (yeniden denenebilir) sayılmaz;
+ *    sonuç 'unconfirmed' olur ve ancak --force ile aşılır.
+ *  - DRY-RUN HİÇBİR ŞEY YAYINLAMAZ: tıklamalar atlanır VE tarayıcı düzeyinde, girişin kendisi
+ *    dışında hiçbir yazan (POST/PUT/...) istek dışarı çıkamaz; böylece tıklamasız tetiklenen
+ *    gönderimler de (`onchange="form.submit()"` gibi) durdurulur.
  */
 
 import { randomUUID } from 'node:crypto';
 import type { Logger } from 'pino';
-import type { Page } from 'playwright';
+import type { Page, Request, Route } from 'playwright';
 import { env } from '../config.js';
-import { makeGenericAdapter } from '../adapters/generic.js';
+import { runSteps, type StepHooks } from '../adapters/generic.js';
 import { loadSiteConfig } from '../adapters/registry.js';
 import { loadSubmissionConfig } from '../adapters/submission-registry.js';
 import type { ValidatedSubmissionConfig } from '../adapters/submission-schema.js';
@@ -19,12 +27,14 @@ import { accountKey, DEFAULT_PRODUCT } from '../identity/account.js';
 import { loadProfile } from '../identity/profile.js';
 import { derivePasswordForSite } from '../identity/password.js';
 import type { Ledger } from '../integrations/ledger.js';
-import { createArtifacts } from './artifacts.js';
+import { registrableDomain } from '../integrations/mail-parse.js';
+import { captureFailure, createArtifacts } from './artifacts.js';
 import { launchContext } from './browser.js';
 import { canAutoVerify, checkDryRunPage } from './dry-run-check.js';
-import { listingApproval, APPROVAL_DIR } from './listing-approval.js';
+import { PermanentError } from './errors.js';
+import { APPROVAL_DIR, assetFingerprints, listingApproval } from './listing-approval.js';
 import { makeCaptchaHandler } from './runner.js';
-import type { SignupContext, SiteConfig, SiteId } from './types.js';
+import type { Artifacts, SignupContext, SiteConfig, SiteId } from './types.js';
 
 export type SubmitStatus =
   | 'completed'
@@ -36,7 +46,8 @@ export type SubmitStatus =
   | 'skipped_not_approved'
   | 'skipped_done'
   | 'skipped_locked'
-  | 'skipped_high_risk';
+  | 'skipped_high_risk'
+  | 'skipped_daily_limit';
 
 export interface SubmitOutcome {
   status: SubmitStatus;
@@ -50,15 +61,102 @@ export interface SubmitOptions {
   ledger: Ledger;
   /** Varsayılan true'ya CLI karar verir; burada açıkça verilmeli. */
   dryRun: boolean;
-  /** Daha önce tamamlanmış gerçek gönderimi yeniden dene. */
+  /** Daha önce tamamlanmış (ya da sonucu doğrulanamamış) gerçek gönderimi yeniden dene. */
   force?: boolean;
   productId?: string;
   runId?: string;
   /** Testler için: tarayıcıyı dışarıdan ver. */
   launch?: (key: string, opts: { ephemeral: boolean }) => Promise<{ page: Page; close(): Promise<void> }>;
-  /** Testler için config / onay dizinleri. */
+  /** Testler için config / onay / logo dizinleri. */
   submissionsDir?: string;
   approvalDir?: string;
+  assetsDir?: string;
+  /** Testler için kayıt config'i: verilmezse src/sites'tan yüklenir, `null` = yok. */
+  signupConfig?: SiteConfig | null;
+}
+
+type Phase = 'prepare' | 'login' | 'form';
+
+interface BlockedRequest {
+  method: string;
+  url: string;
+  phase: Phase;
+  sameSite: boolean;
+}
+
+/** Bir çalıştırmanın akış durumu: istek korumasının ve hata sınıflandırmasının ortak bilgisi. */
+interface RunState {
+  phase: Phase;
+  /** Gönderim artık YAPILMIŞ OLABİLİR (ilk gerçek form tıklaması / siteye giden yazan istek). */
+  maybeSent: boolean;
+  blocked: BlockedRequest[];
+}
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const isMutating = (method: string): boolean => !SAFE_METHODS.has(method.toUpperCase());
+
+function sameSite(a: string, b: string): boolean {
+  const left = registrableDomain(a);
+  return left !== '' && left === registrableDomain(b);
+}
+
+/** İstek `pageUrl` adresindeki sayfadan mı çıktı? (origin + yol; sorgu/hash yok sayılır.) */
+function isFromPage(req: Request, pageUrl: string | undefined): boolean {
+  if (!pageUrl) return false;
+  try {
+    const from = new URL(req.frame().url());
+    const page = new URL(pageUrl);
+    return from.origin === page.origin && from.pathname === page.pathname;
+  } catch {
+    return false; // service worker isteği gibi çerçevesi olmayan istek: izin verme
+  }
+}
+
+/**
+ * Listeleme adımları için kayıt-biçimli site tanımı. Risk ve captcha tercihi KAYIT
+ * config'inden miras alınır; kayıt config'i yoksa kapalı-güvenli varsayılan: orta risk,
+ * captcha çözümü KAPALI. (Sabit `risk:'low'` yazmak, kayıtta kapatılmış captcha çözümünü
+ * listeleme formunda sessizce yeniden açıyordu.)
+ */
+export function listingSiteConfig(args: {
+  siteId: SiteId;
+  name: string;
+  signupConfig: SiteConfig | null;
+  url: string;
+  steps: SiteConfig['steps'];
+}): SiteConfig {
+  const { signupConfig } = args;
+  return {
+    id: args.siteId,
+    name: args.name,
+    risk: signupConfig?.risk ?? 'medium',
+    solveCaptcha: signupConfig ? signupConfig.solveCaptcha : false,
+    signupUrl: args.url,
+    emailLocalPart: args.siteId,
+    steps: args.steps,
+    verification: { mode: 'none' },
+  } as SiteConfig;
+}
+
+/** Dry-run'da form tıklanmadan kendiliğinden yazan istek atmaya çalıştıysa (engellendi) açıklaması. */
+function attemptedSubmitNote(state: RunState): string | null {
+  const attempted = state.blocked.filter((b) => b.phase === 'form' && b.sameSite);
+  if (attempted.length === 0) return null;
+  const where = attempted
+    .slice(0, 3)
+    .map((b) => `${b.method} ${new URL(b.url).pathname}`)
+    .join(', ');
+  return `form tıklanmadan kendiliğinden göndermeye çalıştı, engellendi (${where})`;
+}
+
+function skippedDone(done: NonNullable<ReturnType<Ledger['liveSubmission']>>): SubmitOutcome {
+  return {
+    status: 'skipped_done',
+    note:
+      done.status === 'completed'
+        ? `zaten listelendi${done.listing_url ? `: ${done.listing_url}` : ''} (--force ile aşılır)`
+        : 'önceki gönderimin sonucu doğrulanamadı, yayınlanmış olabilir — elle kontrol et (--force ile aşılır)',
+  };
 }
 
 export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promise<SubmitOutcome> {
@@ -76,10 +174,26 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
     return { status: 'failed', note: (err as Error).message };
   }
 
-  // Kayıt config'i varsa onun riski geçerli: ToS otomatik erişimi yasaklıyorsa listeleme de yok.
-  const signupConfig = await loadSiteConfig(siteId).catch(() => null);
+  // Kayıt config'i: ToS riski, captcha tercihi ve şifre politikası oradan gelir.
+  const signupConfig: SiteConfig | null =
+    opts.signupConfig !== undefined ? opts.signupConfig : await loadSiteConfig(siteId).catch(() => null);
   if (signupConfig?.risk === 'high') {
     return { status: 'skipped_high_risk', note: 'ToS otomatik erişimi yasaklıyor' };
+  }
+  if (!signupConfig && !opts.dryRun) {
+    return {
+      status: 'failed',
+      note: `Gerçek listeleme için kayıt config'i (src/sites/${siteId}.json) gerekli: risk, captcha tercihi ve şifre politikası oradan gelir`,
+    };
+  }
+  if (signupConfig) {
+    // Türetilen şifre yalnızca bu sitenin kendi alan adına yazılır: listeleme/giriş adresi
+    // başka bir siteye işaret ediyorsa (config hatası ya da kötü niyet) hiçbir şey açılmaz.
+    const home = registrableDomain(signupConfig.signupUrl);
+    const foreign = [config.listingUrl, config.login?.url].filter((u): u is string => Boolean(u) && registrableDomain(u as string) !== home);
+    if (home === '' || foreign.length > 0) {
+      return { status: 'failed', note: `Listeleme/giriş adresi kayıt sitesinin alan adında (${home || '?'}) değil: ${foreign.join(', ')}` };
+    }
   }
 
   let profile;
@@ -101,11 +215,12 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
   }
 
   if (!opts.dryRun) {
-    const approval = await listingApproval(productId, profile, opts.approvalDir ?? APPROVAL_DIR);
+    const assets = await assetFingerprints(profile, opts.assetsDir);
+    const approval = await listingApproval(productId, profile, opts.approvalDir ?? APPROVAL_DIR, assets);
     if (!approval.ok) {
       const why =
         approval.reason === 'changed'
-          ? 'ürün profili onaydan sonra DEĞİŞMİŞ'
+          ? 'ürün profili ya da logo dosyası onaydan sonra DEĞİŞMİŞ'
           : approval.reason === 'missing'
             ? 'ürün bilgisi henüz onaylanmamış'
             : 'onay kaydı okunamadı';
@@ -114,16 +229,18 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
         note: `Herkese açık listeleme için ${why} — profili gözden geçirip onayla: approve-profile ${productId}`,
       };
     }
-    const done = ledger.liveSubmission(key);
-    if (done && !opts.force) {
-      return {
-        status: 'skipped_done',
-        note:
-          done.status === 'completed'
-            ? `zaten listelendi${done.listing_url ? `: ${done.listing_url}` : ''} (--force ile aşılır)`
-            : 'önceki gönderimin sonucu doğrulanamadı, yayınlanmış olabilir — elle kontrol et (--force ile aşılır)',
-      };
+    // Hız sınırı: --force bunu aşmaz (kayıttaki günlük sınırla aynı sayı, ayrı sayaç).
+    if (ledger.countLiveSubmissionsToday() >= env.DAILY_LIMIT) {
+      return { status: 'skipped_daily_limit', note: `bugün ${env.DAILY_LIMIT} gerçek listeleme yapıldı (günlük sınır)` };
     }
+    const done = ledger.liveSubmission(key);
+    if (done && !opts.force) return skippedDone(done);
+  }
+
+  // Aynı hesapta kayıt (run-one) sürüyorsa aynı tarayıcı profiline ikinci bir tarayıcı açılmaz.
+  const signupLock = ledger.activeLock(key);
+  if (signupLock && signupLock.expires_at > Date.now()) {
+    return { status: 'skipped_locked', note: 'bu hesapta şu an bir kayıt çalışıyor' };
   }
 
   // ── Kilit + kayıt ───────────────────────────────────────────────────────
@@ -131,16 +248,67 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
   if (!ledger.tryClaim(lockKey, runId)) {
     return { status: 'skipped_locked', note: 'bu hesapta başka bir listeleme çalışıyor' };
   }
-  const submissionId = ledger.startSubmission(key, runId, opts.dryRun);
+
+  let submissionId: number | null = null;
   let outcome: SubmitOutcome = { status: 'error' };
   let browser: Awaited<ReturnType<NonNullable<SubmitOptions['launch']>>> | null = null;
+  let artifacts: Artifacts | undefined;
+  const state: RunState = { phase: 'prepare', maybeSent: false, blocked: [] };
+
+  // Kanıt yakalama asıl hatayı gölgelememeli.
+  const capture = async (name: string): Promise<void> => {
+    if (!artifacts) return;
+    try {
+      await captureFailure(artifacts, name);
+    } catch {
+      /* yoksay */
+    }
+  };
 
   try {
+    // Kilidi almakla önceki kontrol arasında başka bir süreç gönderim yapmış olabilir.
+    if (!opts.dryRun && !opts.force) {
+      const done = ledger.liveSubmission(key);
+      if (done) return skippedDone(done);
+    }
+
+    submissionId = ledger.startSubmission(key, runId, opts.dryRun);
+
     const launch = opts.launch ?? ((k, o) => launchContext(k, { ephemeral: o.ephemeral }));
     browser = await launch(key, { ephemeral: opts.dryRun });
     const page = browser.page;
-    const artifacts = createArtifacts(page, runId, `${key}-submit`);
+    artifacts = createArtifacts(page, runId, `${key}-submit`);
     outcome.artifactsDir = artifacts.dir;
+    const shots = artifacts;
+
+    // Gönderim yapılmış OLABİLİR mi? Siteye giden her yazan istek (yükleme, kendiliğinden
+    // gönderim...) bunu işaretler; üçüncü taraf (analitik) istekleri sayılmaz.
+    const browserContext = page.context();
+    browserContext.on('request', (req) => {
+      if (state.phase === 'form' && isMutating(req.method()) && sameSite(req.url(), config.listingUrl)) state.maybeSent = true;
+    });
+
+    // DRY-RUN AĞ KORUMASI: giriş formunun kendi isteği dışında yazan hiçbir istek çıkamaz.
+    // Hata anında da engelle (kapalı-güvenli): karar verilemeyen istek durdurulur.
+    if (opts.dryRun) {
+      await browserContext.route('**/*', async (route: Route) => {
+        let allow = true;
+        try {
+          const req = route.request();
+          if (isMutating(req.method())) {
+            allow = state.phase === 'login' && isFromPage(req, config.login?.url);
+            if (!allow) {
+              const blocked: BlockedRequest = { method: req.method(), url: req.url(), phase: state.phase, sameSite: sameSite(req.url(), config.listingUrl) };
+              state.blocked.push(blocked);
+              log.warn({ method: blocked.method, url: blocked.url, phase: blocked.phase }, 'DRY-RUN: yazan istek ENGELLENDİ');
+            }
+          }
+        } catch {
+          allow = false;
+        }
+        await (allow ? route.continue() : route.abort('blockedbyclient')).catch(() => undefined);
+      });
+    }
 
     const identity = {
       email: credentials.email,
@@ -149,112 +317,157 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
       passwordVersion: credentials.pw_version,
     };
 
-    const synthetic = (url: string, steps: SiteConfig['steps']): SiteConfig =>
-      ({
-        id: siteId,
-        name: config.name,
-        risk: 'low',
-        signupUrl: url,
-        emailLocalPart: siteId,
-        steps,
-        verification: { mode: 'none' },
-      }) as SiteConfig;
-
-    const context = (site: SiteConfig, dryRun: boolean): SignupContext => ({
+    const signupContextFor = (site: SiteConfig, dryRun: boolean): SignupContext => ({
       page,
       site,
       identity,
       profile,
       log,
-      artifacts,
+      artifacts: shots,
       dryRun,
       requestHumanCaptcha: makeCaptchaHandler(page, log),
     });
+    const siteFor = (url: string, steps: SiteConfig['steps']): SiteConfig =>
+      listingSiteConfig({ siteId, name: config.name, signupConfig, url, steps });
 
     // ── Giriş ─────────────────────────────────────────────────────────────
     await page.goto(config.listingUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-    const isLoggedIn = async (waitMs = 0): Promise<boolean> => {
-      if (!config.loggedIn) return false;
-      const marker = page.locator(config.loggedIn).first();
-      if (waitMs > 0) await marker.waitFor({ state: 'visible', timeout: waitMs }).catch(() => undefined);
-      return marker.isVisible().catch(() => false);
-    };
-    // Kalıcı tarayıcı profili önceki oturumu taşıyabilir: önce kısaca bak, yoksa giriş yap.
-    if (!(await isLoggedIn(2_000)) && config.login) {
-      log.info('Oturum yok — giriş yapılıyor');
-      // GİRİŞ bir yayın değildir (kendi hesabımıza oturum açıyoruz): dry-run'da bile giriş
-      // adımları (tıklamalar dahil) çalışır, yoksa form hiç görünmezdi. Ama dry-run'ın
-      // "captcha çözme/insan bekleme yok" kuralı korunur: captchaGate adımları ayıklanır.
-      const loginSteps = (config.login.steps as SiteConfig['steps']).filter((st) => !(opts.dryRun && st.type === 'captchaGate'));
-      const loginSite = synthetic(config.login.url, loginSteps);
-      await makeGenericAdapter(loginSite).signup(context(loginSite, false));
-      await page.goto(config.listingUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-      if (config.loggedIn && !(await isLoggedIn(8_000))) {
-        await artifacts.shot('login-failed');
-        outcome = { status: 'manual', note: 'Giriş yapılamadı (oturum işareti görünmedi) — şifre/akış kontrol edilmeli', artifactsDir: artifacts.dir };
-        return outcome;
+    if (config.loggedIn) {
+      const isLoggedIn = async (waitMs: number): Promise<boolean> => {
+        const marker = page.locator(config.loggedIn as string).first();
+        if (waitMs > 0) await marker.waitFor({ state: 'visible', timeout: waitMs }).catch(() => undefined);
+        return marker.isVisible().catch(() => false);
+      };
+      // Kalıcı tarayıcı profili önceki oturumu taşıyabilir: önce kısaca bak, yoksa giriş yap.
+      if (!(await isLoggedIn(2_000))) {
+        if (!config.login) {
+          await capture('not-logged-in');
+          outcome = { status: 'failed', note: "Oturum açık değil ve config'te giriş adımları (login) yok", artifactsDir: shots.dir };
+          return outcome;
+        }
+        log.info('Oturum yok — giriş yapılıyor');
+        // GİRİŞ bir yayın değildir (kendi hesabımıza oturum açıyoruz): dry-run'da bile giriş
+        // adımları (tıklamalar dahil) çalışır, yoksa form hiç görünmezdi. Ama dry-run'ın
+        // "captcha çözme/insan bekleme yok" kuralı korunur: captchaGate adımları ayıklanır.
+        const loginSteps = (config.login.steps as SiteConfig['steps']).filter((st) => !(opts.dryRun && st.type === 'captchaGate'));
+        const loginSite = siteFor(config.login.url, loginSteps);
+        state.phase = 'login';
+        await runSteps(signupContextFor(loginSite, false), loginSite.steps);
+        // Giriş isteği (XHR dahil) tıklamadan biraz sonra çıkabilir: bitmeden ne gezin ne de ağ
+        // korumasının "giriş" aşamasını kapat.
+        await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined);
+        state.phase = 'prepare';
+        await page.goto(config.listingUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        if (!(await isLoggedIn(8_000))) {
+          await capture('login-failed');
+          outcome = { status: 'failed', note: 'Giriş yapılamadı (oturum işareti görünmedi) — şifre/akış kontrol edilmeli', artifactsDir: shots.dir };
+          return outcome;
+        }
       }
     }
 
     // ── Form ──────────────────────────────────────────────────────────────
-    const formSite = synthetic(config.listingUrl, config.steps as SiteConfig['steps']);
-    await makeGenericAdapter(formSite).signup(context(formSite, opts.dryRun));
+    state.phase = 'form';
+    const formSite = siteFor(config.listingUrl, config.steps as SiteConfig['steps']);
+    const hooks: StepHooks = {
+      beforeClick: async () => {
+        // Başarı işareti gönderimden ÖNCE de görünüyorsa config sahte başarı üretir: tıklama yok.
+        const early = await matchSuccess(page, config.success);
+        if (early) throw new PermanentError(`Başarı işareti gönderimden ÖNCE de görünüyor (${early}) — config güvenilmez, gönderilmedi`);
+        state.maybeSent = true;
+      },
+    };
+    await runSteps(signupContextFor(formSite, opts.dryRun), formSite.steps, hooks);
 
     if (opts.dryRun) {
-      const shot = await artifacts.shot('submission-filled');
+      // Son adımın tetiklediği gecikmeli bir kendiliğinden gönderim varsa görünsün.
+      await page.waitForLoadState('networkidle', { timeout: 2_000 }).catch(() => undefined);
+      const shot = await shots.shot('submission-filled');
       const issues = await checkDryRunPage(page, formSite);
       for (const i of issues) log.warn({ kind: i.kind, selector: i.selector }, i.detail);
-      const ok = canAutoVerify(issues);
-      outcome = {
-        status: ok ? 'completed' : 'manual',
-        note: ok ? `dry-run${issues.length ? ` (${issues.length} uyarı)` : ''} — gönderilmedi` : `dry-run BAŞARISIZ: ${issues.map((i) => i.detail).join(' | ')}`,
-        artifactsDir: artifacts.dir,
-      };
-      log.info({ shot, issues: issues.length, ok }, 'DRY-RUN listeleme tamamlandı');
+
+      const problems: string[] = [];
+      if (!canAutoVerify(issues) || issues.some((i) => i.kind === 'no_submit')) problems.push(...issues.map((i) => i.detail));
+      const attempted = attemptedSubmitNote(state);
+      if (attempted) problems.push(attempted);
+      const early = await matchSuccess(page, config.success);
+      if (early) problems.push(`başarı işareti gönderimden ÖNCE de görünüyor (${early}) — gerçek gönderimde sahte başarı verir`);
+
+      outcome =
+        problems.length === 0
+          ? { status: 'completed', note: `dry-run${issues.length ? ` (${issues.length} uyarı)` : ''} — gönderilmedi`, artifactsDir: shots.dir }
+          : { status: 'manual', note: `dry-run BAŞARISIZ: ${problems.join(' | ')}`, artifactsDir: shots.dir };
+      log.info({ shot, issues: issues.length, problems: problems.length }, 'DRY-RUN listeleme tamamlandı');
       return outcome;
     }
 
     // ── Gerçek gönderim: başarıyı doğrula ─────────────────────────────────
+    if (!state.maybeSent) {
+      await capture('submission-not-sent');
+      outcome = { status: 'failed', note: "Form adımları bitti ama gönderim yapılmadı (config'te çalışan bir click adımı yok)", artifactsDir: shots.dir };
+      return outcome;
+    }
     const confirmed = await waitForSuccess(page, config.success);
     if (confirmed) {
-      outcome = { status: 'completed', listingUrl: page.url(), note: `onaylandı (${confirmed})`, artifactsDir: artifacts.dir };
+      outcome = { status: 'completed', listingUrl: page.url(), note: `onaylandı (${confirmed})`, artifactsDir: shots.dir };
     } else {
-      await artifacts.shot('submission-unconfirmed');
-      await artifacts.html('submission-unconfirmed');
+      await capture('submission-unconfirmed');
       outcome = {
         status: 'unconfirmed',
         note: 'Gönderildi ama başarı işareti görünmedi — elle kontrol edilmeli (yayınlanmış olabilir; otomatik tekrar denenmez)',
         listingUrl: page.url(),
-        artifactsDir: artifacts.dir,
+        artifactsDir: shots.dir,
       };
     }
     return outcome;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log.error({ err: message }, 'Listeleme başarısız');
-    // GERÇEK gönderimde hata, formun gönderilip gönderilmediğini bilmediğimiz bir noktada olabilir
-    // (tıklamadan sonra zaman aşımı gibi): yayınlanmış olabilir, otomatik yeniden deneme çift
-    // listeleme yapardı. Hiçbir şey gönderilmemiş olduğu KESİN hatalar (öğe bulunamadı, sayfa
-    // yüklenmedi) 'failed' kalır ve yeniden denenebilir; gerisi 'unconfirmed' olur.
-    const notSent = /Selector bulunamadı|Sayfa yüklenmedi|page\.goto|net::ERR/.test(message);
-    if (!opts.dryRun && !notSent) {
-      outcome = {
-        status: 'unconfirmed',
-        note: `gönderim sırasında hata, yayınlanmış olabilir — elle kontrol et: ${message}`,
-        artifactsDir: outcome.artifactsDir,
-      };
+    await capture('submission-error');
+    // Gönderimin yapılmış OLABİLECEĞİ andan sonraki her hata (tıklamadan sonra zaman aşımı gibi)
+    // yayınlanmış bir ürünü gizleyebilir; otomatik yeniden deneme çift listeleme yapardı. Öncesi
+    // (öğe bulunamadı, sayfa açılmadı, giriş olmadı) güvenle 'failed' kalır ve yeniden denenebilir.
+    // Dry-run'da engellenen kendiliğinden gönderim, sonraki adımların hatasının asıl nedenidir
+    // (sayfa gezinemedi): kök nedeni kaybetme.
+    const attempted = opts.dryRun ? attemptedSubmitNote(state) : null;
+    if (attempted) {
+      outcome = { status: 'manual', note: `dry-run BAŞARISIZ: ${attempted}; ardından adım hata verdi: ${message}`, artifactsDir: artifacts?.dir };
+    } else if (!opts.dryRun && state.maybeSent) {
+      outcome = { status: 'unconfirmed', note: `gönderim başladıktan sonra hata, yayınlanmış olabilir — elle kontrol et: ${message}`, artifactsDir: artifacts?.dir };
     } else {
-      outcome = { status: 'failed', note: message, artifactsDir: outcome.artifactsDir };
+      outcome = { status: 'failed', note: message, artifactsDir: artifacts?.dir };
     }
     return outcome;
   } finally {
-    ledger.finishSubmission(submissionId, outcome.status, outcome.note, outcome.listingUrl);
-    ledger.release(lockKey);
+    // Her temizlik adımı ayrı korunur: biri patlarsa kilit/tarayıcı açık kalmasın.
+    if (submissionId !== null) {
+      try {
+        ledger.finishSubmission(submissionId, outcome.status, outcome.note, outcome.listingUrl);
+      } catch (err) {
+        log.error({ err: (err as Error).message }, 'Listeleme sonucu ledger\'a yazılamadı');
+      }
+    }
+    try {
+      ledger.release(lockKey);
+    } catch (err) {
+      log.error({ err: (err as Error).message }, 'Listeleme kilidi bırakılamadı');
+    }
     await browser?.close().catch(() => undefined);
   }
 }
 
-/** Başarı işaretlerinden biri görünene/uyana kadar bekler; hangisinin uyduğunu döner. */
+/** Başarı işaretlerinden biri şu an görünüyor/uyuyor mu? Hangisinin uyduğunu döner. */
+async function matchSuccess(page: Page, success: ValidatedSubmissionConfig['success']): Promise<string | null> {
+  for (const fragment of success.urlContains ?? []) {
+    if (page.url().includes(fragment)) return `url:${fragment}`;
+  }
+  for (const selector of success.anyOf ?? []) {
+    if (await page.locator(selector).first().isVisible().catch(() => false)) return `görünür:${selector}`;
+  }
+  return null;
+}
+
+/** Başarı işaretlerinden biri görünene/uyana kadar bekler. */
 async function waitForSuccess(
   page: Page,
   success: ValidatedSubmissionConfig['success'],
@@ -262,12 +475,8 @@ async function waitForSuccess(
 ): Promise<string | null> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    for (const fragment of success.urlContains ?? []) {
-      if (page.url().includes(fragment)) return `url:${fragment}`;
-    }
-    for (const selector of success.anyOf ?? []) {
-      if (await page.locator(selector).first().isVisible().catch(() => false)) return `görünür:${selector}`;
-    }
+    const hit = await matchSuccess(page, success);
+    if (hit) return hit;
     await page.waitForTimeout(500);
   }
   return null;
