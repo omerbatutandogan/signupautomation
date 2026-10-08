@@ -32,15 +32,40 @@ export function profileFingerprint(profile: unknown): string {
   return createHash('sha256').update(canonical(profile)).digest('hex');
 }
 
+/**
+ * Profilin başvurduğu dosyaların (logo) içerik özeti. Dosya yolu aynı kalıp içerik
+ * değişirse (başka bir logo) onay geçersiz olmalı; dosya hiç yoksa `null` kaydedilir ki
+ * sonradan eklenmesi de "değişti" sayılsın.
+ */
+export async function assetFingerprints(
+  profile: { logo?: Record<string, string> },
+  baseDir = 'src/profile',
+): Promise<Record<string, string | null>> {
+  const out: Record<string, string | null> = {};
+  for (const path of Object.values(profile.logo ?? {}).sort()) {
+    try {
+      out[path] = createHash('sha256').update(await readFile(`${baseDir}/${path}`)).digest('hex');
+    } catch {
+      out[path] = null;
+    }
+  }
+  return out;
+}
+
+/** Onayın bağlandığı TAM içerik: profil + başvurduğu dosyaların özeti. */
+export function listingFingerprint(profile: unknown, assets: Record<string, string | null> = {}): string {
+  return profileFingerprint({ profile, assets });
+}
+
 const pathFor = (productId: string, dir: string) => `${dir}/${productId}.json`;
 
 export async function approveProfile(
   productId: string,
   profile: unknown,
-  opts: { dir?: string; now?: Date } = {},
+  opts: { dir?: string; now?: Date; assets?: Record<string, string | null> } = {},
 ): Promise<{ sha256: string; approvedAt: string }> {
   const dir = opts.dir ?? APPROVAL_DIR;
-  const record = { sha256: profileFingerprint(profile), approvedAt: (opts.now ?? new Date()).toISOString() };
+  const record = { sha256: listingFingerprint(profile, opts.assets), approvedAt: (opts.now ?? new Date()).toISOString() };
   const path = pathFor(productId, dir);
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(record, null, 2)}\n`);
@@ -49,7 +74,12 @@ export async function approveProfile(
 
 export type ApprovalState = { ok: true; approvedAt: string } | { ok: false; reason: 'missing' | 'changed' | 'unreadable' };
 
-export async function listingApproval(productId: string, profile: unknown, dir = APPROVAL_DIR): Promise<ApprovalState> {
+export async function listingApproval(
+  productId: string,
+  profile: unknown,
+  dir = APPROVAL_DIR,
+  assets: Record<string, string | null> = {},
+): Promise<ApprovalState> {
   let raw: string;
   try {
     raw = await readFile(pathFor(productId, dir), 'utf8');
@@ -59,7 +89,7 @@ export async function listingApproval(productId: string, profile: unknown, dir =
   try {
     const rec = JSON.parse(raw) as { sha256?: unknown; approvedAt?: unknown };
     if (typeof rec.sha256 !== 'string' || typeof rec.approvedAt !== 'string') return { ok: false, reason: 'unreadable' };
-    return rec.sha256 === profileFingerprint(profile) ? { ok: true, approvedAt: rec.approvedAt } : { ok: false, reason: 'changed' };
+    return rec.sha256 === listingFingerprint(profile, assets) ? { ok: true, approvedAt: rec.approvedAt } : { ok: false, reason: 'changed' };
   } catch {
     return { ok: false, reason: 'unreadable' };
   }

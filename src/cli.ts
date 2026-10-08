@@ -61,7 +61,8 @@ Komutlar:
   submit <siteId>         Giriş yapıp ürünü sitenin listeleme formuna girer (varsayılan DRY-RUN: göndermez)
     --live                Gerçekten gönder — ürün profilinin onaylı olması gerekir (approve-profile)
     --force               Daha önce tamamlanmış gerçek gönderimi yeniden dene
-  approve-profile <ürün>  Ürün bilgisini HERKESE AÇIK listeleme için onayla (profil değişirse geçersiz olur)
+  approve-profile <ürün>  Ürün bilgisini ve logo dosyalarını HERKESE AÇIK listeleme için onayla
+                          (etkileşimli terminal + yazılı onay ister; içerik değişirse geçersiz olur)
   list                    Tanımlı site config'lerini listele
   unlock <siteId>         Takılı kilidi temizle
   password <siteId>       Türetilmiş şifreyi yazdır
@@ -378,22 +379,21 @@ async function cmdSubmit(siteId: string, flags: Set<string>, productId: string):
 }
 
 async function cmdApproveProfile(productId: string): Promise<number> {
-  const { approveProfile } = await import('./core/listing-approval.js');
+  const { reviewAndApprove } = await import('./core/approval-prompt.js');
   const profile = await loadProfile(productId);
-  console.log(`\n${productId} — herkese açık yayınlanacak bilgiler:\n`);
-  console.log(`  Ürün adı     : ${profile.companyName}`);
-  console.log(`  Şirket/yasal : ${profile.legalName}`);
-  console.log(`  Site         : ${profile.website}`);
-  console.log(`  Slogan       : ${profile.tagline}`);
-  console.log(`  Kısa açıklama: ${profile.descriptions.short}`);
-  console.log(`  Orta açıklama: ${profile.descriptions.medium}`);
-  console.log(`  Kategori     : ${profile.category.primary} (${profile.category.aliases.join(', ')})`);
-  console.log(`  İletişim     : ${profile.contact.firstName} ${profile.contact.lastName}, ${profile.contact.role}, ${profile.contact.email}`);
-  console.log(`  Fiyat        : ${profile.pricing} · Kuruluş: ${profile.foundedYear}`);
-  console.log(`  Sosyal       : ${JSON.stringify(profile.socials)}`);
-  const rec = await approveProfile(productId, profile);
-  console.log(`\n✅ Bu içerik listeleme için onaylandı (${rec.sha256.slice(0, 12)}…). Profil değişirse onay geçersiz olur.`);
-  return 0;
+  const interactive = Boolean(process.stdin.isTTY);
+  const { createInterface } = await import('node:readline/promises');
+  const rl = interactive ? createInterface({ input: process.stdin, output: process.stdout }) : null;
+  try {
+    const result = await reviewAndApprove(productId, profile, {
+      isTTY: interactive,
+      print: (line) => console.log(line),
+      ask: (question) => (rl ? rl.question(question) : Promise.resolve('')),
+    });
+    return result.approved ? 0 : 1;
+  } finally {
+    rl?.close();
+  }
 }
 
 async function cmdRunBatch(flags: Set<string>, positional: string[]): Promise<number> {
