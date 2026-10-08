@@ -203,11 +203,15 @@ async function runStep(ctx: SignupContext, step: Step, index: number): Promise<v
         // Etiketin İÇİNDEKİ bağlantıya (Şartlar) yanlışlıkla gitmemek için etiket değil,
         // bağlı olduğu kutunun kendisi DOM üzerinden işaretlenir.
         if (isCheckboxLabelClick(step.selector ?? '')) {
-          await locator.evaluate((el) => {
-            const control = (el as HTMLLabelElement).control as HTMLInputElement | null;
-            if (control && !control.checked) control.click();
+          // Etiketin bağlı olduğu öğe bir onay kutusu/radyo DEĞİLSE (ör. `label[for]` bir gönder
+          // butonunu gösteriyor) dokunma: o tıklama formu gönderirdi.
+          const ticked = await locator.evaluate((el) => {
+            const control = (el as HTMLLabelElement).control;
+            if (!(control instanceof HTMLInputElement) || (control.type !== 'checkbox' && control.type !== 'radio')) return 'skipped';
+            if (!control.checked) control.click();
+            return 'ticked';
           });
-          log.info({ selector: step.selector }, 'DRY-RUN: onay kutusu işaretlendi');
+          log.info({ selector: step.selector, ticked }, ticked === 'ticked' ? 'DRY-RUN: onay kutusu işaretlendi' : 'DRY-RUN: etiket bir onay kutusuna bağlı değil, atlandı');
           return;
         }
         log.info({ selector: step.selector }, 'DRY-RUN: tıklama atlandı');

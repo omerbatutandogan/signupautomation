@@ -140,6 +140,37 @@ describe('gerçek çalıştırma (kontrol)', () => {
   }, 30_000);
 });
 
+describe('dry-run: etiket bir onay kutusuna bağlı DEĞİLSE dokunulmaz', () => {
+  // `label[for=…]` biçimi onay kutusu etiketi gibi görünür ama bir gönder butonunu da gösterebilir;
+  // o etiketi tıklamak formu GÖNDERİR. Dry-run yalnızca gerçek checkbox/radio'yu işaretler.
+  const PAGE = (control: string) => `
+    <form id="f"><input name="email">${control}<label for="go" id="lbl">Go</label></form>
+    <script>
+      window.__submitted = false;
+      document.getElementById('f').addEventListener('submit', (e) => { e.preventDefault(); window.__submitted = true; });
+    </script>`;
+  const submitted = () => page.evaluate(() => (window as unknown as { __submitted: boolean }).__submitted);
+
+  for (const [name, control] of [
+    ['<button>', '<button id="go" type="submit">Go</button>'],
+    ['<input type=submit>', '<input id="go" type="submit" value="Go">'],
+  ] as const) {
+    it(`etiket bir ${name} gösteriyorsa tıklanmaz, form GÖNDERİLMEZ`, async () => {
+      await page.setContent(PAGE(control));
+      const site = config([{ type: 'click', selector: "label[for='go']" }]);
+      await makeGenericAdapter(site).signup(context(site, true));
+      expect(await submitted()).toBe(false);
+    }, 30_000);
+  }
+
+  it('kontrol: gerçek onay kutusu etiketi yine işaretler', async () => {
+    await page.setContent(PAGE('<input id="go" type="checkbox" name="go">'));
+    const site = config([{ type: 'click', selector: "label[for='go']" }]);
+    await makeGenericAdapter(site).signup(context(site, true));
+    expect(await page.evaluate(() => (document.getElementById('go') as HTMLInputElement).checked)).toBe(true);
+  }, 30_000);
+});
+
 describe('selectors', () => {
   it('etiket tıklamasını tanır', () => {
     expect(isCheckboxLabelClick("label[for='x']")).toBe(true);
