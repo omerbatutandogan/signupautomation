@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { StepSchema } from './schema.js';
 
 /** İki adres aynı sayfa mı? (origin + yol; sorgu ve hash yok sayılır.) */
-function samePage(a: string, b: string): boolean {
+export function samePage(a: string, b: string): boolean {
   try {
     const x = new URL(a);
     const y = new URL(b);

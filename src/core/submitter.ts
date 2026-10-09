@@ -23,7 +23,7 @@ import { env } from '../config.js';
 import { runSteps, type StepHooks } from '../adapters/generic.js';
 import { loadSiteConfig } from '../adapters/registry.js';
 import { loadSubmissionConfig } from '../adapters/submission-registry.js';
-import type { ValidatedSubmissionConfig } from '../adapters/submission-schema.js';
+import { samePage, type ValidatedSubmissionConfig } from '../adapters/submission-schema.js';
 import { accountKey, DEFAULT_PRODUCT } from '../identity/account.js';
 import { loadProfile } from '../identity/profile.js';
 import { derivePasswordForSite } from '../identity/password.js';
@@ -450,9 +450,9 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
         const loginSite = siteFor(config.login.url, loginSteps);
         state.phase = 'login';
         await runSteps(signupContextFor(loginSite, false), loginSite.steps);
-        // Giriş isteği (XHR dahil) tıklamadan biraz sonra çıkabilir: bitmeden ne gezin ne de ağ
-        // korumasının "giriş" aşamasını kapat.
-        await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined);
+        // Giriş isteği (XHR dahil) tıklamadan SONRA çıkabilir ve oturum çoğu zaman sayfa içinde
+        // kurulur: bitmeden ne gezin (istek yarıda kesilir) ne de ağ korumasının "giriş" aşamasını kapat.
+        await waitForLoginToSettle(page, config.login.url, config.loggedIn);
         state.phase = 'prepare';
         await page.goto(config.listingUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
         if (!(await isLoggedIn(8_000))) {
@@ -556,6 +556,21 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
     }
     await browser?.close().catch(() => undefined);
   }
+}
+
+/**
+ * Giriş tıklandıktan sonra oturumun kurulmasını bekler: adres giriş sayfasından ayrılır ya da
+ * "giriş yapıldı" işareti görünür (hangisi önce olursa). `waitForLoadState('networkidle')` burada
+ * KULLANILMAZ: sayfa yüklenirken zaten ulaşılmış durum için anında döner ve gecikmeli giriş isteği
+ * ardından gelen `goto` ile yarıda kesilirdi (10words'te gerçekten yaşandı).
+ */
+async function waitForLoginToSettle(page: Page, loginUrl: string, loggedInSelector: string, timeoutMs = 10_000): Promise<void> {
+  const settled = (promise: Promise<unknown>) => promise.then(() => true, () => false);
+  await Promise.race([
+    settled(page.waitForURL((url) => !samePage(url.href, loginUrl), { timeout: timeoutMs })),
+    settled(page.locator(loggedInSelector).first().waitFor({ state: 'visible', timeout: timeoutMs })),
+  ]);
+  await page.waitForTimeout(500); // yönlendirmeyi izleyen sayfanın kendi istekleri bitsin
 }
 
 /** Başarı işaretlerinden biri şu an görünüyor/uyuyor mu? Hangisinin uyduğunu döner. */

@@ -137,6 +137,17 @@ beforeAll(async () => {
       const loginForm = `<form method="post" action="/login"><input name="email"><input name="password" type="password"><button id="login-btn">Log in</button></form>`;
       if (pathname === '/login' && get) return send(200, page(loginForm));
       if (pathname === '/login-captcha' && get) return send(200, page(loginForm + FAKE_CAPTCHA));
+      if (pathname === '/login-slow' && get) {
+        // Gerçek siteler gibi: tıklama hemen döner, giriş isteği ~1.5 sn sonra XHR olarak çıkar ve
+        // sayfa oturum kurulunca kendisi yönlenir (oturum adresle değil, yönlendirmeyle gelir).
+        return send(
+          200,
+          page(
+            `<form onsubmit="event.preventDefault(); setTimeout(() => fetch('/login', {method: 'POST'}).then(() => { location.href = '/submit'; }), 1500)">
+               <input name="email"><input name="password" type="password"><button id="login-btn">Log in</button></form>`,
+          ),
+        );
+      }
       if (pathname === '/login-mirror' && get) {
         // Yazılan değeri `value` özniteliğine yansıtır (React'in kontrollü girdileri gibi).
         return send(200, page(loginForm.replace('type="password"', `type="password" oninput="this.setAttribute('value', this.value)"`)));
@@ -515,6 +526,27 @@ describe('submitListing — dry-run ağ koruması (tıklamasız gönderim)', () 
     withAccount(ledger, 'fixture-login-ok');
     await submitListing('fixture-login-ok', options(ledger));
     expect(received.loginPosts).toBe(1);
+    ledger.close();
+  }, 60_000);
+
+  it('giriş isteği tıklamadan SONRA (gecikmeli XHR) çıksa da giriş tamamlanır: istek gezinmeyle yarıda kesilmez', async () => {
+    await writeConfig('fixture-slow', {
+      login: {
+        url: `${base}/login-slow`,
+        steps: [
+          { type: 'goto', url: '{{signupUrl}}' },
+          { type: 'fill', selector: "input[name='email']", field: 'email' },
+          { type: 'fill', selector: "input[name='password']", field: 'password' },
+          { type: 'click', selector: '#login-btn' },
+        ],
+      },
+    });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-slow');
+    const outcome = await submitListing('fixture-slow', options(ledger));
+    expect(outcome.status).toBe('completed');
+    expect(received.loginPosts).toBe(1);
+    expect(received.submitPosts).toEqual([]);
     ledger.close();
   }, 60_000);
 
