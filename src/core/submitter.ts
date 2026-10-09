@@ -90,8 +90,10 @@ interface BlockedRequest {
 /** Bir çalıştırmanın akış durumu: istek korumasının ve hata sınıflandırmasının ortak bilgisi. */
 interface RunState {
   phase: Phase;
-  /** Gönderim artık YAPILMIŞ OLABİLİR (ilk gerçek form tıklaması / siteye giden yazan istek). */
+  /** Gönderim artık YAPILMIŞ OLABİLİR (ilk gerçek form tıklaması / ürünü taşıyan yazan istek). */
   maybeSent: boolean;
+  /** İlk GERÇEK form tıklaması yapıldı (ağ izinden bağımsız). */
+  clicked: boolean;
   blocked: BlockedRequest[];
 }
 
@@ -106,6 +108,9 @@ const isMutating = (method: string): boolean => !SAFE_METHODS.has(method.toUpper
 const SHARED_HOSTING = new Set([
   'vercel.app', 'github.io', 'netlify.app', 'herokuapp.com', 'pages.dev', 'workers.dev', 'web.app',
   'firebaseapp.com', 'onrender.com', 'fly.dev', 'blogspot.com', 'wordpress.com', 'tumblr.com', 'wixsite.com',
+  'myshopify.com', 'webflow.io', 'azurewebsites.net', 'appspot.com', 'notion.site', 'ghost.io', 'surge.sh',
+  'glitch.me', 'repl.co', 'replit.app', 'framer.website', 'carrd.co', 'bubbleapps.io', 'weebly.com', 'square.site',
+  'substack.com', 'medium.com', 'squarespace.com', 'amazonaws.com', 'cloudfront.net', 'herokudns.com',
 ]);
 
 /** `url`, kayıt sitesiyle (`signupUrl`) AYNI site mi? Şifre yalnızca burada yazılabilir. */
@@ -256,7 +261,11 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
   if (signupConfig) {
     // Türetilen şifre yalnızca bu sitenin kendi alan adına yazılır: listeleme/giriş adresi
     // başka bir siteye işaret ediyorsa (config hatası ya da kötü niyet) hiçbir şey açılmaz.
-    const foreign = [config.listingUrl, config.login?.url].filter((u): u is string => Boolean(u) && !belongsToSite(u as string, signupConfig.signupUrl));
+    // Adım içindeki sabit `goto` adresleri de dahil: parola yazan bir adımdan önce başka siteye gidilemez.
+    const gotoUrls = [...(config.login?.steps ?? []), ...config.steps].flatMap((st) =>
+      st.type === 'goto' && !st.url.includes('{{signupUrl}}') ? [st.url] : [],
+    );
+    const foreign = [config.listingUrl, config.login?.url, ...gotoUrls].filter((u): u is string => Boolean(u) && !belongsToSite(u as string, signupConfig.signupUrl));
     if (foreign.length > 0) {
       return { status: 'failed', note: `Listeleme/giriş adresi kayıt sitesinin alan adında değil (${registrableDomain(signupConfig.signupUrl) || '?'}): ${foreign.join(', ')}` };
     }
@@ -324,7 +333,7 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
   let outcome: SubmitOutcome = { status: 'error' };
   let browser: Awaited<ReturnType<NonNullable<SubmitOptions['launch']>>> | null = null;
   let artifacts: Artifacts | undefined;
-  const state: RunState = { phase: 'prepare', maybeSent: false, blocked: [] };
+  const state: RunState = { phase: 'prepare', maybeSent: false, clicked: false, blocked: [] };
 
   // Kanıt yakalama asıl hatayı gölgelememeli.
   const capture = async (name: string): Promise<void> => {
@@ -363,7 +372,7 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
 
     // Gönderim yapılmış OLABİLİR mi? Siteye giden her yazan istek (yükleme, kendiliğinden
     // gönderim...) bunu işaretler; üçüncü taraf (analitik) istekleri sayılmaz.
-    const publishedValues = [profile.companyName, profile.website].filter((v) => v.length >= 3);
+    const publishedValues = [profile.companyName, profile.website].filter((v) => v.length >= 4);
     const browserContext = page.context();
     browserContext.on('request', (req) => {
       if (state.phase === 'form' && looksLikeSubmission(req, publishedValues)) state.maybeSent = true;
@@ -460,11 +469,13 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
     const hooks: StepHooks = {
       beforeClick: async () => {
         // Başarı işareti gönderimden ÖNCE de görünüyorsa config sahte başarı üretir: tıklama yok.
-        // (İlk tıklamadan sonra çok adımlı formun işareti meşru olarak görünebilir: bir daha bakma.)
-        if (!state.maybeSent) {
+        // (İlk tıklamadan sonra çok adımlı formun işareti meşru olarak görünebilir: bir daha bakma.
+        // Ağ izi bunu kapatmaz: bir "bu adres kayıtlı mı?" isteği tıklamadan önce de çıkabilir.)
+        if (!state.clicked) {
           const early = await matchSuccess(page, config.success);
           if (early) throw new PermanentError(`Başarı işareti gönderimden ÖNCE de görünüyor (${early}) — config güvenilmez, gönderilmedi`);
         }
+        state.clicked = true;
         state.maybeSent = true;
       },
     };

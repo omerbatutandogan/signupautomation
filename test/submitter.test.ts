@@ -64,7 +64,7 @@ let server: Server;
 let browser: Browser;
 let base = '';
 let port = 0;
-const received = { loginPosts: 0, beacons: 0, sameSiteBeacons: 0, submitPosts: [] as Array<Record<string, string>> };
+const received = { loginPosts: 0, beacons: 0, sameSiteBeacons: 0, dupChecks: 0, submitPosts: [] as Array<Record<string, string>> };
 let submissionsDir = '';
 let approvalDir = '';
 let assetsDir = '';
@@ -94,6 +94,8 @@ function listingPage(path: string): string | null {
       );
     case '/submit-early': // başarı işareti gönderimden ÖNCE de sayfada
       return LOGOUT + THANKS + FORM;
+    case '/submit-early-dup': // başarı işareti hazır + alana yazılınca ürün adresini taşıyan "kayıtlı mı?" isteği
+      return LOGOUT + THANKS + FORM.replace('<input name="site">', `<input name="site" oninput="fetch('/dup-check',{method:'POST',body:this.value})">`);
     case '/submit-beacon': // analitik işaretleri atan sayfa: biri başka alan adına, biri aynı siteye (Cloudflare gibi)
       return (
         LOGOUT +
@@ -152,6 +154,10 @@ beforeAll(async () => {
            });`,
           { 'content-type': 'application/javascript' },
         );
+      }
+      if (pathname === '/dup-check' && req.method === 'POST') {
+        received.dupChecks++;
+        return send(200, 'ok');
       }
       if (pathname === '/cdn-cgi/jsd' && req.method === 'POST') {
         received.sameSiteBeacons++;
@@ -264,6 +270,7 @@ beforeEach(async () => {
   received.loginPosts = 0;
   received.beacons = 0;
   received.sameSiteBeacons = 0;
+  received.dupChecks = 0;
   captured.html.length = 0;
   received.submitPosts.length = 0;
   launches = 0;
@@ -628,6 +635,25 @@ describe('submitListing — kapılar (tarayıcı AÇILMADAN)', () => {
     ledger.close();
   }, 60_000);
 
+  it('adımlardaki SABİT goto adresi başka bir siteye gidiyorsa reddedilir (parola yazan adımdan önce)', async () => {
+    await writeConfig('fixture-goto', {
+      login: {
+        url: `${base}/login`,
+        steps: [
+          { type: 'goto', url: 'https://baska-site.example.net/login' },
+          { type: 'fill', selector: '#password', field: 'password' },
+        ],
+      },
+    });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-goto');
+    const outcome = await submitListing('fixture-goto', options(ledger));
+    expect(outcome.status).toBe('failed');
+    expect(outcome.note).toMatch(/alan adında değil.*baska-site\.example\.net/);
+    expect(launches).toBe(0);
+    ledger.close();
+  });
+
   it('paylaşımlı barındırma alan adında (vercel.app) başka alt alan adı "aynı site" sayılmaz', async () => {
     await writeConfig('fixture-shared', {
       listingUrl: 'https://baskasi.vercel.app/submit',
@@ -957,6 +983,21 @@ describe('submitListing — GERÇEK gönderim', () => {
     await approve();
     const outcome = await submitListing('fixture-wizard', live(ledger));
     expect(outcome.status).toBe('completed');
+    ledger.close();
+  }, 60_000);
+
+  it('tıklamadan ÖNCE çıkan "kayıtlı mı?" isteği erken başarı işareti kontrolünü kapatmaz: sahte başarı yok', async () => {
+    // Başarı işareti sayfada zaten var; alana yazılınca ürün adresini taşıyan bir istek tıklamadan önce çıkar
+    // (ağ izi "gönderilmiş olabilir" der). Kontrol yalnızca İLK TIKLAMADAN önce atlanmalı, o istekle değil.
+    await writeConfig('fixture-dup', { listingUrl: `${base}/submit-early-dup` });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-dup');
+    await approve();
+    const outcome = await submitListing('fixture-dup', live(ledger));
+    expect(received.dupChecks).toBeGreaterThan(0); // fixture gerçekten ağ izini bıraktı
+    expect(outcome.status).not.toBe('completed'); // kanıtsız "tamamlandı" YOK
+    expect(outcome.note).toMatch(/ÖNCE de görünüyor/);
+    expect(received.submitPosts).toEqual([]); // ve hiçbir şey gönderilmedi
     ledger.close();
   }, 60_000);
 
