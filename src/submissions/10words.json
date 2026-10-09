@@ -1,0 +1,29 @@
+{
+  "id": "10words",
+  "name": "10words",
+  "listingUrl": "https://portal.10words.io/submissions/submit",
+  "loggedIn": "input[placeholder='Enter the name of your project']",
+  "login": {
+    "url": "https://portal.10words.io/auth/login",
+    "steps": [
+      { "type": "goto", "url": "{{signupUrl}}" },
+      { "type": "fill", "selector": "#email", "field": "email" },
+      { "type": "fill", "selector": "#password", "field": "password" },
+      { "type": "click", "selector": "button[type='submit']" }
+    ]
+  },
+  "steps": [
+    { "type": "goto", "url": "{{signupUrl}}" },
+    { "type": "waitFor", "selector": "button:has-text('Get Started')", "optional": true, "timeoutMs": 8000 },
+    { "type": "dismiss", "selectors": ["button:has-text('Get Started')"] },
+    { "type": "fill", "selector": "input[placeholder='Enter the name of your project']", "field": "companyName" },
+    { "type": "fill", "selector": "textarea[placeholder^='Describe your project']", "field": "tagline" },
+    { "type": "fill", "selector": "input[placeholder='Enter a full link to your project']", "field": "website" },
+    { "type": "fill", "selector": "input[placeholder^='Enter your project or personal Twitter']", "field": "twitter", "optional": true },
+    { "type": "click", "selector": "label[for='push-saas']" },
+    { "type": "click", "selector": "label[for='newsletter-none']" },
+    { "type": "click", "selector": "button:has-text('Submit Project')" }
+  ],
+  "success": { "anyOf": ["text=/pending|in review|under review|submitted successfully/i"] },
+  "notes": "Form 2026-10-09'da gerçek oturumla incelendi (portal.10words.io/submissions/submit): başlangıçta bir tanıtım penceresi var (dismiss adımı kapatır), alanlarda name/id yok → yer tutucu metinle seçilir. Açıklama '10 kelime veya daha az' istiyor → tagline kullanılır (descriptions.* değil). Kategori: SaaS seçildi (geo.new bir API/hizmet) — ürün sahibi onaylamalı. Bülten: 'No thanks' (pazarlama aboneliği işaretlenmez). Giriş portal.10words.io/auth/login (#email, #password); türetilen şifre çalışıyor. BAŞARI İŞARETİ DOĞRULANMADI (gönderilmedi; yalnız tahmin): ilk gerçek gönderim işaret görünmezse 'unconfirmed' kalır, otomatik tekrar denenmez. Gönderim sonrası ödeme/sponsor yönlendirmesi çıkabilir."
+}
