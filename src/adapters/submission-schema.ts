@@ -13,6 +13,17 @@
 import { z } from 'zod';
 import { StepSchema } from './schema.js';
 
+/** İki adres aynı sayfa mı? (origin + yol; sorgu ve hash yok sayılır.) */
+function samePage(a: string, b: string): boolean {
+  try {
+    const x = new URL(a);
+    const y = new URL(b);
+    return x.origin === y.origin && x.pathname === y.pathname;
+  } catch {
+    return a === b;
+  }
+}
+
 export const SubmissionConfigSchema = z
   .object({
   id: z.string().min(1).regex(/^[a-z0-9-]+$/, 'id yalnızca küçük harf, rakam ve tire içerebilir'),
@@ -53,8 +64,9 @@ export const SubmissionConfigSchema = z
     if (cfg.login && !cfg.loggedIn) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['loggedIn'], message: 'login tanımlıysa loggedIn (giriş işareti) zorunlu' });
     }
-    if (cfg.login && cfg.login.url === cfg.listingUrl) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['login', 'url'], message: 'login.url, listingUrl ile aynı olamaz (dry-run girişi ile gönderim ayrılamaz)' });
+    // Sorgu/hash farkı ayrım sayılmaz: `…/submit?login=1` hâlâ aynı sayfadır.
+    if (cfg.login && samePage(cfg.login.url, cfg.listingUrl)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['login', 'url'], message: 'login.url, listingUrl ile aynı sayfa olamaz (dry-run girişi ile gönderim ayrılamaz)' });
     }
     // Zaten adreste bulunan bir parça "başarı" kanıtı olamaz: gönderim yapılmadan da tutar.
     for (const fragment of cfg.success.urlContains ?? []) {

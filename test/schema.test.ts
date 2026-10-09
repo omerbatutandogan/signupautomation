@@ -23,6 +23,14 @@ describe('StepSchema', () => {
     );
   });
 
+  it('upload yolu src/profile/ altında göreli olmalı (başka dosya sızdırılamaz)', () => {
+    const upload = (file: string) => StepSchema.safeParse({ type: 'upload', selector: '#logo', file }).success;
+    expect(upload('assets/logo-512.png')).toBe(true);
+    for (const bad of ['../../.env', '../.env', 'assets/../../.env', '/etc/passwd', 'assets\\..\\.env']) {
+      expect(upload(bad), bad).toBe(false);
+    }
+  });
+
   it('bilinmeyen adım tipini reddeder', () => {
     expect(StepSchema.safeParse({ type: 'teleport', selector: '#x' }).success).toBe(false);
   });

@@ -105,6 +105,10 @@ const StepUnion = z.discriminatedUnion('type', [
  * ya da sabit metinden (value) alır; ikisi de yoksa adım anlamsızdır.
  */
 export const StepSchema = StepUnion.superRefine((step, ctx) => {
+  // Yükleme yalnızca src/profile/ altından: `../../.env` gibi yollarla başka dosya sızdırılamaz.
+  if (step.type === 'upload' && (step.file.startsWith('/') || step.file.includes('\\') || step.file.split('/').includes('..'))) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['file'], message: 'upload dosyası src/profile/ altında göreli bir yol olmalı (/, \\ ve .. yok)' });
+  }
   if (step.type === 'fill' || step.type === 'select') {
     if (step.field === undefined && step.value === undefined) {
       ctx.addIssue({

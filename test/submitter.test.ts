@@ -7,9 +7,10 @@ import pino from 'pino';
 import { chromium, type Browser } from 'playwright';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { shouldSolveCaptcha } from '../src/adapters/generic.js';
+import { derivePasswordForSite } from '../src/identity/password.js';
 import { env } from '../src/config.js';
 import { approveProfile, assetFingerprints } from '../src/core/listing-approval.js';
-import { listingSiteConfig, submitListing, type SubmitOptions } from '../src/core/submitter.js';
+import { belongsToSite, listingSiteConfig, submitExitCode, submitListing, type SubmitOptions } from '../src/core/submitter.js';
 import type { SiteConfig } from '../src/core/types.js';
 import { loadProfile } from '../src/identity/profile.js';
 import { Ledger } from '../src/integrations/ledger.js';
@@ -24,9 +25,21 @@ import { Ledger } from '../src/integrations/ledger.js';
  */
 
 // Gerçek artifacts/ dizinine ekran görüntüsü yazılmasın.
+// Kanıt olarak yakalanacak HTML dosyaya değil `captured.html`e yazılır (içeriği denetlenebilsin).
+const captured = vi.hoisted(() => ({ html: [] as string[] }));
 vi.mock('../src/core/artifacts.js', () => ({
-  createArtifacts: () => ({ dir: 'memory', shot: async () => 'memory/x.png', html: async () => 'memory/x.html' }),
-  captureFailure: async () => ({ shot: 'memory/x.png', html: 'memory/x.html' }),
+  createArtifacts: (page: { content(): Promise<string> }) => ({
+    dir: 'memory',
+    shot: async () => 'memory/x.png',
+    html: async () => {
+      captured.html.push(await page.content().catch(() => ''));
+      return 'memory/x.html';
+    },
+  }),
+  captureFailure: async (artifacts: { shot(n: string): Promise<string>; html(n: string): Promise<string> }, name: string) => ({
+    shot: await artifacts.shot(name),
+    html: await artifacts.html(name),
+  }),
 }));
 
 // İnsan hızında yazma (alan başına 9 sn'ye kadar) bu testlerin konusu değil; sahte siteyi 5 dk
@@ -51,7 +64,7 @@ let server: Server;
 let browser: Browser;
 let base = '';
 let port = 0;
-const received = { loginPosts: 0, beacons: 0, submitPosts: [] as Array<Record<string, string>> };
+const received = { loginPosts: 0, beacons: 0, sameSiteBeacons: 0, submitPosts: [] as Array<Record<string, string>> };
 let submissionsDir = '';
 let approvalDir = '';
 let assetsDir = '';
@@ -81,8 +94,27 @@ function listingPage(path: string): string | null {
       );
     case '/submit-early': // başarı işareti gönderimden ÖNCE de sayfada
       return LOGOUT + THANKS + FORM;
-    case '/submit-beacon': // üçüncü taraf (başka alan adı) analitik isteği atan sayfa
-      return LOGOUT + FORM + `<script>fetch('http://localhost:${port}/beacon',{method:'POST',mode:'no-cors',body:'x'}).catch(()=>{})</script>`;
+    case '/submit-beacon': // analitik işaretleri atan sayfa: biri başka alan adına, biri aynı siteye (Cloudflare gibi)
+      return (
+        LOGOUT +
+        FORM +
+        `<script>fetch('http://localhost:${port}/beacon',{method:'POST',mode:'no-cors',body:'x'}).catch(()=>{});
+          fetch('/cdn-cgi/jsd',{method:'POST',body:'x'}).catch(()=>{})</script>`
+      );
+    case '/submit-click-beacon': // butona basınca YALNIZCA başka alan adına bir istek atar (form gönderilmez)
+      return LOGOUT + `<button id="send" type="button" onclick="fetch('http://localhost:${port}/beacon',{method:'POST',mode:'no-cors',body:'x'})">Submit</button>`;
+    case '/submit-wizard': // ilk adımdan sonra başarı işareti zaten görünür, ikinci düğme belirir
+      return (
+        LOGOUT +
+        `<button id="next" type="button" onclick="document.body.insertAdjacentHTML('beforeend','<h2 id=ok>Thank you</h2><button id=send2 type=button>Done</button>')">Next</button>`
+      );
+    case '/submit-sw': // seçim, bir service worker üzerinden kendi POST'unu attırır
+      return (
+        LOGOUT +
+        `<script>navigator.serviceWorker.register('/sw.js')</script>
+         <form method="post" action="/submit"><select name="cat" onchange="navigator.serviceWorker.ready.then(() => fetch('/sw-trigger'))">
+           <option value="">-</option><option>Developer Tools</option></select><button id="send" type="submit">Submit</button></form>`
+      );
     default:
       return null;
   }
@@ -103,6 +135,28 @@ beforeAll(async () => {
       const loginForm = `<form method="post" action="/login"><input name="email"><input name="password" type="password"><button id="login-btn">Log in</button></form>`;
       if (pathname === '/login' && get) return send(200, page(loginForm));
       if (pathname === '/login-captcha' && get) return send(200, page(loginForm + FAKE_CAPTCHA));
+      if (pathname === '/login-mirror' && get) {
+        // Yazılan değeri `value` özniteliğine yansıtır (React'in kontrollü girdileri gibi).
+        return send(200, page(loginForm.replace('type="password"', `type="password" oninput="this.setAttribute('value', this.value)"`)));
+      }
+      if (pathname === '/submit-public' && get) return send(200, page(FORM)); // giriş istemeyen açık form
+      if (pathname === '/sw.js' && get) {
+        return send(
+          200,
+          `self.addEventListener('install', () => self.skipWaiting());
+           self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+           self.addEventListener('fetch', (e) => {
+             if (new URL(e.request.url).pathname === '/sw-trigger') {
+               e.respondWith(fetch('/submit', { method: 'POST', body: 'via=sw' }).then(() => new Response('ok')));
+             }
+           });`,
+          { 'content-type': 'application/javascript' },
+        );
+      }
+      if (pathname === '/cdn-cgi/jsd' && req.method === 'POST') {
+        received.sameSiteBeacons++;
+        return send(204, '');
+      }
       if (pathname === '/login' && req.method === 'POST') {
         received.loginPosts++;
         return send(302, '', { location: '/submit', 'set-cookie': 'sid=1; Path=/' });
@@ -209,6 +263,8 @@ const live = (ledger: Ledger, over: Partial<SubmitOptions> = {}) => options(ledg
 beforeEach(async () => {
   received.loginPosts = 0;
   received.beacons = 0;
+  received.sameSiteBeacons = 0;
+  captured.html.length = 0;
   received.submitPosts.length = 0;
   launches = 0;
   lastLaunch = null;
@@ -253,11 +309,24 @@ describe('submitListing — dry-run', () => {
     ledger.close();
   }, 60_000);
 
-  it('kayıt config\'i olmasa da dry-run çalışır (kapalı-güvenli varsayılanlarla)', async () => {
+  it('kayıt config\'i yoksa GİRİŞ yapan dry-run çalışmaz (şifrenin yazılacağı alan adı doğrulanamaz)', async () => {
     await writeConfig('fixture-a2');
     const ledger = new Ledger(':memory:');
     withAccount(ledger, 'fixture-a2');
-    expect((await submitListing('fixture-a2', options(ledger, { signupConfig: null }))).status).toBe('completed');
+    const outcome = await submitListing('fixture-a2', options(ledger, { signupConfig: null }));
+    expect(outcome.status).toBe('failed');
+    expect(outcome.note).toMatch(/Giriş yapan listeleme için kayıt config'i/);
+    expect(launches).toBe(0);
+    expect(received.loginPosts).toBe(0);
+    ledger.close();
+  });
+
+  it('giriş istemeyen açık formda kayıt config\'i olmadan da dry-run çalışır (kapalı-güvenli varsayılanlarla)', async () => {
+    await writeConfig('fixture-a3', { listingUrl: `${base}/submit-public`, login: undefined, loggedIn: undefined });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-a3');
+    expect((await submitListing('fixture-a3', options(ledger, { signupConfig: null }))).status).toBe('completed');
+    expect(received.loginPosts).toBe(0);
     ledger.close();
   }, 60_000);
 
@@ -362,12 +431,74 @@ describe('submitListing — dry-run ağ koruması (tıklamasız gönderim)', () 
     expect((await submitListing('fixture-beacon', options(ledger))).status).toBe('failed');
     expect(received.beacons).toBe(0);
 
-    // Gerçek: işaret sunucuya ulaşır (kontrol), ama siteye giden bir gönderim DEĞİL → yeniden denenebilir 'failed'.
+    // Gerçek: işaretler sunucuya ulaşır (kontrol), ama bunlar ürünü GÖNDEREN istekler değil
+    // (başka alan adı + aynı siteden Cloudflare tarzı /cdn-cgi/ işareti) → yeniden denenebilir 'failed'.
     await approve();
     const outcome = await submitListing('fixture-beacon', live(ledger));
     expect(received.beacons).toBeGreaterThan(0);
+    expect(received.sameSiteBeacons).toBeGreaterThan(0);
     expect(outcome.status).toBe('failed');
     expect(ledger.liveSubmission('fixture-beacon')).toBeNull();
+    ledger.close();
+  }, 90_000);
+
+  it('aynı siteye giden analitik işareti dry-run\'ı "kendiliğinden gönderdi" diye BOZMAZ (sahte manual yok)', async () => {
+    await writeConfig('fixture-beacon2', { listingUrl: `${base}/submit-beacon` });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-beacon2');
+    const outcome = await submitListing('fixture-beacon2', options(ledger));
+    expect(outcome.status).toBe('completed');
+    expect(received.sameSiteBeacons).toBe(0); // yine de ENGELLENDİ: dry-run'dan hiçbir yazan istek çıkmaz
+    expect(received.beacons).toBe(0);
+    expect(received.submitPosts).toEqual([]);
+    ledger.close();
+  }, 60_000);
+
+  it('dry-run sayfada service worker\'ı devre dışı bırakır (ikinci katman); gerçek çalıştırmada dokunmaz', async () => {
+    await writeConfig('fixture-swbypass');
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-swbypass');
+    await approve();
+    const cdpCalls: string[] = [];
+    const spyLaunch: SubmitOptions['launch'] = async () => {
+      const ctx = await browser.newContext();
+      const open = ctx.newCDPSession.bind(ctx);
+      ctx.newCDPSession = (async (target: Parameters<typeof open>[0]) => {
+        const session = await open(target);
+        const send = session.send.bind(session) as (m: string, p?: object) => Promise<unknown>;
+        (session as unknown as { send: typeof send }).send = async (method, params) => {
+          cdpCalls.push(`${method}:${JSON.stringify(params ?? {})}`);
+          return send(method, params);
+        };
+        return session;
+      }) as typeof ctx.newCDPSession;
+      return { page: await ctx.newPage(), close: () => ctx.close() };
+    };
+    await submitListing('fixture-swbypass', options(ledger, { launch: spyLaunch }));
+    expect(cdpCalls).toContain('Network.setBypassServiceWorker:{"bypass":true}');
+    cdpCalls.length = 0;
+    await submitListing('fixture-swbypass', live(ledger, { launch: spyLaunch }));
+    expect(cdpCalls).toEqual([]);
+    ledger.close();
+  }, 90_000);
+
+  it('service worker üzerinden atılan POST dry-run\'da da durdurulur', async () => {
+    const steps = [
+      { type: 'goto', url: '{{signupUrl}}' },
+      { type: 'select', selector: "select[name='cat']", field: 'category' },
+      { type: 'click', selector: '#send', timeoutMs: 500 },
+    ];
+    await writeConfig('fixture-sw', { listingUrl: `${base}/submit-sw`, steps });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-sw');
+
+    await submitListing('fixture-sw', options(ledger));
+    expect(received.submitPosts).toEqual([]);
+
+    // KONTROL: korumasız (gerçek) çalıştırmada aynı sayfa service worker ile gerçekten POST eder.
+    await approve();
+    await submitListing('fixture-sw', live(ledger));
+    expect(received.submitPosts.some((post) => post.via === 'sw')).toBe(true);
     ledger.close();
   }, 90_000);
 
@@ -465,6 +596,76 @@ describe('submitListing — kapılar (tarayıcı AÇILMADAN)', () => {
     expect(received.loginPosts).toBe(0);
     ledger.close();
   });
+
+  it('onaylı logo dosyaları dışında bir dosya yükleyen config reddedilir (tarayıcı açılmadan)', async () => {
+    await writeConfig('fixture-up', {
+      steps: [
+        { type: 'goto', url: '{{signupUrl}}' },
+        { type: 'upload', selector: "input[name='logo']", file: 'assets/eski-ekran-goruntusu.png' },
+      ],
+    });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-up');
+    const outcome = await submitListing('fixture-up', options(ledger));
+    expect(outcome.status).toBe('failed');
+    expect(outcome.note).toMatch(/onaylı logo dosyaları dışında.*eski-ekran-goruntusu/);
+    expect(launches).toBe(0);
+    ledger.close();
+  });
+
+  it('onaylı logo yolu kapıdan geçer (bu yüzden sonraki hata yükleme kapısından değildir)', async () => {
+    await writeConfig('fixture-up2', {
+      steps: [
+        { type: 'goto', url: '{{signupUrl}}' },
+        { type: 'upload', selector: "input[name='logo']", file: 'assets/logo-512.png', timeoutMs: 500 },
+      ],
+    });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-up2');
+    const outcome = await submitListing('fixture-up2', options(ledger));
+    expect(outcome.note).not.toMatch(/onaylı logo dosyaları dışında/);
+    expect(launches).toBe(1);
+    ledger.close();
+  }, 60_000);
+
+  it('paylaşımlı barındırma alan adında (vercel.app) başka alt alan adı "aynı site" sayılmaz', async () => {
+    await writeConfig('fixture-shared', {
+      listingUrl: 'https://baskasi.vercel.app/submit',
+      login: { url: 'https://baskasi.vercel.app/login', steps: [{ type: 'goto', url: '{{signupUrl}}' }] },
+    });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-shared');
+    const outcome = await submitListing('fixture-shared', options(ledger, { signupConfig: signupCfg({ signupUrl: 'https://benim.vercel.app/signup' }) }));
+    expect(outcome.status).toBe('failed');
+    expect(outcome.note).toMatch(/alan adında değil/);
+    expect(launches).toBe(0);
+    ledger.close();
+  });
+
+  it('hata anında kanıt olarak yakalanan sayfa HTML\'inde PAROLA bulunmaz', async () => {
+    // Giriş sayfası yazılan parolayı `value` özniteliğine yansıtır; giriş adımı bir sonraki alanda patlar.
+    await writeConfig('fixture-scrub', {
+      login: {
+        url: `${base}/login-mirror`,
+        steps: [
+          { type: 'goto', url: '{{signupUrl}}' },
+          { type: 'fill', selector: "input[name='email']", field: 'email' },
+          { type: 'fill', selector: "input[name='password']", field: 'password' },
+          { type: 'fill', selector: "input[name='yok']", field: 'email', timeoutMs: 500 },
+        ],
+      },
+    });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-scrub');
+    const password = derivePasswordForSite(env.MASTER_SECRET, { id: 'fixture-scrub', passwordPolicy: undefined }, 1);
+    expect(password.length).toBeGreaterThan(8);
+
+    const outcome = await submitListing('fixture-scrub', options(ledger));
+    expect(outcome.status).toBe('failed');
+    expect(captured.html.length).toBeGreaterThan(0); // kanıt gerçekten yakalandı
+    expect(captured.html.some((html) => html.includes(password))).toBe(false);
+    ledger.close();
+  }, 60_000);
 
   it('başka bir listeleme sürerken ikinci başlatma kilitlenir', async () => {
     await writeConfig('fixture-l');
@@ -627,8 +828,8 @@ describe('submitListing — GERÇEK gönderim', () => {
     expect(received.submitPosts).toHaveLength(1);
 
     const retry = await submitListing('fixture-j', live(ledger));
-    expect(retry.status).toBe('skipped_done');
-    expect(retry.note).toMatch(/doğrulanamadı/);
+    expect(retry.status).toBe('skipped_unverified'); // "zaten listelendi" DEĞİL: elle bakılmalı
+    expect(retry.note).toMatch(/doğrulanamadı \(unconfirmed\)/);
     expect(received.submitPosts).toHaveLength(1); // ikinci POST yok
     ledger.close();
   }, 120_000);
@@ -652,7 +853,7 @@ describe('submitListing — GERÇEK gönderim', () => {
     expect(first.note).toMatch(/yayınlanmış olabilir/);
     expect(ledger.liveSubmission('fixture-after-click')?.status).toBe('unconfirmed');
 
-    expect((await submitListing('fixture-after-click', live(ledger))).status).toBe('skipped_done');
+    expect((await submitListing('fixture-after-click', live(ledger))).status).toBe('skipped_unverified');
     expect(received.submitPosts).toHaveLength(1);
     ledger.close();
   }, 120_000);
@@ -720,6 +921,42 @@ describe('submitListing — GERÇEK gönderim', () => {
     expect(outcome.note).toMatch(/ÖNCE de görünüyor/);
     expect(received.submitPosts).toEqual([]);
     expect(ledger.liveSubmission('fixture-early')).toBeNull();
+    ledger.close();
+  }, 60_000);
+
+  it('tıklama TEK başına "gönderilmiş olabilir" demek için yeter (ağ izi olmasa da): sonraki hata unconfirmed', async () => {
+    // Buton yalnızca başka alan adına, ürün bilgisi taşımayan bir istek atar: ağ sinyali YOK, tıklama sinyali var.
+    await writeConfig('fixture-click-only', {
+      listingUrl: `${base}/submit-click-beacon`,
+      steps: [
+        { type: 'goto', url: '{{signupUrl}}' },
+        { type: 'click', selector: '#send' },
+        { type: 'fill', selector: "input[name='yok']", field: 'website', timeoutMs: 500 },
+      ],
+    });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-click-only');
+    await approve();
+    const outcome = await submitListing('fixture-click-only', live(ledger));
+    expect(outcome.status).toBe('unconfirmed');
+    expect(ledger.liveSubmission('fixture-click-only')?.status).toBe('unconfirmed');
+    ledger.close();
+  }, 60_000);
+
+  it('çok adımlı formda ilk tıklamadan sonra görünen başarı işareti ikinci tıklamayı ENGELLEMEZ', async () => {
+    await writeConfig('fixture-wizard', {
+      listingUrl: `${base}/submit-wizard`,
+      steps: [
+        { type: 'goto', url: '{{signupUrl}}' },
+        { type: 'click', selector: '#next' },
+        { type: 'click', selector: '#send2' },
+      ],
+    });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-wizard');
+    await approve();
+    const outcome = await submitListing('fixture-wizard', live(ledger));
+    expect(outcome.status).toBe('completed');
     ledger.close();
   }, 60_000);
 
@@ -811,6 +1048,35 @@ describe('listingSiteConfig — kayıt config\'inin tercihleri miras alınır', 
   it('kayıtta açıkça izin verilen ya da varsayılan bırakılan tercih aynen geçer', () => {
     expect(shouldSolveCaptcha(mk(signupCfg({ solveCaptcha: true })))).toBe(true);
     expect(shouldSolveCaptcha(mk(signupCfg()))).toBe(true); // kayıttaki varsayılan davranışın aynısı
+  });
+});
+
+describe('belongsToSite — şifre yalnızca sitenin kendi alan adına yazılır', () => {
+  const cases: Array<[string, string, boolean]> = [
+    ['https://accounts.example.com/login', 'https://www.example.com/signup', true],
+    ['https://example.com/submit', 'https://www.example.com/signup', true],
+    ['https://evil.com/login', 'https://example.com/signup', false],
+    ['https://example.com.evil.com/login', 'https://example.com/signup', false],
+    ['https://x.example.co.uk/a', 'https://www.example.co.uk/signup', true],
+    ['https://other.co.uk/a', 'https://example.co.uk/signup', false],
+    // Barındırma alan adlarında alt alan adı = başka sahip: tam ana makine adı eşleşmeli.
+    ['https://a.vercel.app/x', 'https://a.vercel.app/signup', true],
+    ['https://b.vercel.app/x', 'https://a.vercel.app/signup', false],
+    ['https://b.github.io/x', 'https://a.github.io/signup', false],
+    ['bozuk adres', 'https://example.com/signup', false],
+  ];
+  it.each(cases)('%s ↔ %s → %s', (url, signupUrl, expected) => {
+    expect(belongsToSite(url, signupUrl)).toBe(expected);
+  });
+});
+
+describe('submitExitCode', () => {
+  it('yalnızca gerçekten listelenmiş / zaten listelenmiş 0 döner; belirsiz ve atlanan durumlar 0 DEĞİL', () => {
+    expect(submitExitCode('completed')).toBe(0);
+    expect(submitExitCode('skipped_done')).toBe(0);
+    for (const status of ['unconfirmed', 'skipped_unverified', 'failed', 'manual', 'error', 'skipped_no_account', 'skipped_not_approved', 'skipped_locked', 'skipped_high_risk', 'skipped_daily_limit'] as const) {
+      expect(submitExitCode(status), status).toBe(1);
+    }
   });
 });
 

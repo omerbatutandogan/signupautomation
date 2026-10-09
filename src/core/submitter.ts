@@ -16,6 +16,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { posix } from 'node:path';
 import type { Logger } from 'pino';
 import type { Page, Request, Route } from 'playwright';
 import { env } from '../config.js';
@@ -45,6 +46,7 @@ export type SubmitStatus =
   | 'skipped_no_account'
   | 'skipped_not_approved'
   | 'skipped_done'
+  | 'skipped_unverified'
   | 'skipped_locked'
   | 'skipped_high_risk'
   | 'skipped_daily_limit';
@@ -81,7 +83,8 @@ interface BlockedRequest {
   method: string;
   url: string;
   phase: Phase;
-  sameSite: boolean;
+  /** İstek ürün bilgisini bir yere GÖNDERİYOR gibi mi (bkz. looksLikeSubmission)? */
+  submission: boolean;
 }
 
 /** Bir çalıştırmanın akış durumu: istek korumasının ve hata sınıflandırmasının ortak bilgisi. */
@@ -95,9 +98,57 @@ interface RunState {
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const isMutating = (method: string): boolean => !SAFE_METHODS.has(method.toUpperCase());
 
-function sameSite(a: string, b: string): boolean {
-  const left = registrableDomain(a);
-  return left !== '' && left === registrableDomain(b);
+/**
+ * Alt alan adlarının FARKLI sahiplere ait olduğu barındırma alan adları: orada "aynı kayıtlanabilir
+ * alan adı" aynı site demek değil (a.vercel.app ile b.vercel.app ilgisiz). Bu alan adlarında tam
+ * ana makine adı eşleşmesi aranır.
+ */
+const SHARED_HOSTING = new Set([
+  'vercel.app', 'github.io', 'netlify.app', 'herokuapp.com', 'pages.dev', 'workers.dev', 'web.app',
+  'firebaseapp.com', 'onrender.com', 'fly.dev', 'blogspot.com', 'wordpress.com', 'tumblr.com', 'wixsite.com',
+]);
+
+/** `url`, kayıt sitesiyle (`signupUrl`) AYNI site mi? Şifre yalnızca burada yazılabilir. */
+export function belongsToSite(url: string, signupUrl: string): boolean {
+  try {
+    const home = registrableDomain(signupUrl);
+    if (home === '') return false;
+    if (SHARED_HOSTING.has(home)) return new URL(url).hostname.toLowerCase() === new URL(signupUrl).hostname.toLowerCase();
+    return registrableDomain(url) === home;
+  } catch {
+    return false;
+  }
+}
+
+/** İstek gövdesi: ham hâli ve URL-çözülmüş hâli (form kodlaması `https%3A%2F%2F…` yazar). */
+function postBody(req: Request): string {
+  let raw = '';
+  try {
+    raw = req.postData() ?? '';
+  } catch {
+    return '';
+  }
+  let decoded = raw;
+  try {
+    decoded = decodeURIComponent(raw.replace(/\+/g, ' '));
+  } catch {
+    /* çözülemeyen gövde ham hâliyle aranır */
+  }
+  return `${raw}\n${decoded}`;
+}
+
+/**
+ * Bu yazan istek ürünü bir yere GÖNDERİYOR olabilir mi? Evet: sayfa gezintisi olan POST'lar (form
+ * gönderimi, hangi siteye olursa olsun) ya da gövdesinde yayınlanacak ürün bilgisi (ad/adres) geçen
+ * istekler (XHR/fetch ile gönderim). Hayır: analitik / güvenlik betiklerinin işaretleri
+ * (ör. Cloudflare `/cdn-cgi/…` POST'u) — bunlar "gönderildi" sayılırsa yeniden denenebilir hatalar
+ * sürekli `unconfirmed` olur ve --force'a itilirdi.
+ */
+function looksLikeSubmission(req: Request, publishedValues: readonly string[]): boolean {
+  if (!isMutating(req.method())) return false;
+  if (req.isNavigationRequest()) return true;
+  const body = postBody(req);
+  return publishedValues.some((v) => body.includes(v));
 }
 
 /** İstek `pageUrl` adresindeki sayfadan mı çıktı? (origin + yol; sorgu/hash yok sayılır.) */
@@ -140,7 +191,7 @@ export function listingSiteConfig(args: {
 
 /** Dry-run'da form tıklanmadan kendiliğinden yazan istek atmaya çalıştıysa (engellendi) açıklaması. */
 function attemptedSubmitNote(state: RunState): string | null {
-  const attempted = state.blocked.filter((b) => b.phase === 'form' && b.sameSite);
+  const attempted = state.blocked.filter((b) => b.phase === 'form' && b.submission);
   if (attempted.length === 0) return null;
   const where = attempted
     .slice(0, 3)
@@ -149,14 +200,28 @@ function attemptedSubmitNote(state: RunState): string | null {
   return `form tıklanmadan kendiliğinden göndermeye çalıştı, engellendi (${where})`;
 }
 
+/** Betikler için çıkış kodu: yalnızca gerçekten listelenmiş (ya da zaten listelenmiş) olmak 0'dır. */
+export function submitExitCode(status: SubmitStatus): number {
+  return status === 'completed' || status === 'skipped_done' ? 0 : 1;
+}
+
 function skippedDone(done: NonNullable<ReturnType<Ledger['liveSubmission']>>): SubmitOutcome {
-  return {
-    status: 'skipped_done',
-    note:
-      done.status === 'completed'
-        ? `zaten listelendi${done.listing_url ? `: ${done.listing_url}` : ''} (--force ile aşılır)`
-        : 'önceki gönderimin sonucu doğrulanamadı, yayınlanmış olabilir — elle kontrol et (--force ile aşılır)',
-  };
+  // "Zaten listelendi" ile "belki listelendi, elle bak" farklı şeylerdir: betikler ayırt edebilsin.
+  return done.status === 'completed'
+    ? { status: 'skipped_done', note: `zaten listelendi${done.listing_url ? `: ${done.listing_url}` : ''} (--force ile aşılır)` }
+    : {
+        status: 'skipped_unverified',
+        note: `önceki gönderimin sonucu doğrulanamadı (${done.status}), yayınlanmış olabilir — elle kontrol et (--force ile aşılır)`,
+      };
+}
+
+/** Yükleme adımlarının dosyaları yalnızca onaylanmış logo dosyaları olabilir (başka dosya sızdırılamaz). */
+function unapprovedUploads(steps: ReadonlyArray<{ type: string; file?: string }>, profile: { logo?: Record<string, string> }): string[] {
+  const approved = new Set(Object.values(profile.logo ?? {}).map((f) => posix.normalize(f)));
+  return steps
+    .filter((st) => st.type === 'upload' && st.file !== undefined)
+    .map((st) => posix.normalize(st.file as string))
+    .filter((f) => !approved.has(f));
 }
 
 export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promise<SubmitOutcome> {
@@ -180,19 +245,20 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
   if (signupConfig?.risk === 'high') {
     return { status: 'skipped_high_risk', note: 'ToS otomatik erişimi yasaklıyor' };
   }
-  if (!signupConfig && !opts.dryRun) {
+  // Gerçek gönderim için de, şifre yazılacaksa (giriş adımı varsa) dry-run için de şart: risk, captcha
+  // tercihi, şifre politikası ve — en önemlisi — şifrenin yazılabileceği alan adı oradan doğrulanır.
+  if (!signupConfig && (!opts.dryRun || config.login)) {
     return {
       status: 'failed',
-      note: `Gerçek listeleme için kayıt config'i (src/sites/${siteId}.json) gerekli: risk, captcha tercihi ve şifre politikası oradan gelir`,
+      note: `${opts.dryRun ? 'Giriş yapan' : 'Gerçek'} listeleme için kayıt config'i (src/sites/${siteId}.json) gerekli: risk, captcha tercihi, şifre politikası ve şifrenin yazılacağı alan adı oradan doğrulanır`,
     };
   }
   if (signupConfig) {
     // Türetilen şifre yalnızca bu sitenin kendi alan adına yazılır: listeleme/giriş adresi
     // başka bir siteye işaret ediyorsa (config hatası ya da kötü niyet) hiçbir şey açılmaz.
-    const home = registrableDomain(signupConfig.signupUrl);
-    const foreign = [config.listingUrl, config.login?.url].filter((u): u is string => Boolean(u) && registrableDomain(u as string) !== home);
-    if (home === '' || foreign.length > 0) {
-      return { status: 'failed', note: `Listeleme/giriş adresi kayıt sitesinin alan adında (${home || '?'}) değil: ${foreign.join(', ')}` };
+    const foreign = [config.listingUrl, config.login?.url].filter((u): u is string => Boolean(u) && !belongsToSite(u as string, signupConfig.signupUrl));
+    if (foreign.length > 0) {
+      return { status: 'failed', note: `Listeleme/giriş adresi kayıt sitesinin alan adında değil (${registrableDomain(signupConfig.signupUrl) || '?'}): ${foreign.join(', ')}` };
     }
   }
 
@@ -201,6 +267,11 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
     profile = await loadProfile(productId);
   } catch (err) {
     return { status: 'failed', note: (err as Error).message };
+  }
+
+  const strayUploads = unapprovedUploads([...(config.login?.steps ?? []), ...config.steps], profile);
+  if (strayUploads.length > 0) {
+    return { status: 'failed', note: `Yükleme adımı onaylı logo dosyaları dışında bir dosya istiyor: ${strayUploads.join(', ')}` };
   }
 
   // Hesap şart: listeleme açılmış bir hesapla yapılır, kayıt AÇMAZ.
@@ -259,6 +330,15 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
   const capture = async (name: string): Promise<void> => {
     if (!artifacts) return;
     try {
+      // React gibi çerçeveler yazılan değeri `value` özniteliğine yansıtır: parola diske HTML olarak yazılmasın.
+      await browser?.page
+        .evaluate(() => {
+          for (const input of Array.from(document.querySelectorAll('input[type="password"]'))) {
+            (input as HTMLInputElement).value = '';
+            input.setAttribute('value', '');
+          }
+        })
+        .catch(() => undefined);
       await captureFailure(artifacts, name);
     } catch {
       /* yoksay */
@@ -283,14 +363,22 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
 
     // Gönderim yapılmış OLABİLİR mi? Siteye giden her yazan istek (yükleme, kendiliğinden
     // gönderim...) bunu işaretler; üçüncü taraf (analitik) istekleri sayılmaz.
+    const publishedValues = [profile.companyName, profile.website].filter((v) => v.length >= 3);
     const browserContext = page.context();
     browserContext.on('request', (req) => {
-      if (state.phase === 'form' && isMutating(req.method()) && sameSite(req.url(), config.listingUrl)) state.maybeSent = true;
+      if (state.phase === 'form' && looksLikeSubmission(req, publishedValues)) state.maybeSent = true;
     });
 
     // DRY-RUN AĞ KORUMASI: giriş formunun kendi isteği dışında yazan hiçbir istek çıkamaz.
     // Hata anında da engelle (kapalı-güvenli): karar verilemeyen istek durdurulur.
     if (opts.dryRun) {
+      // Kalıcı profil önceki oturumdan bir service worker taşıyabilir. Playwright sürümüne göre onun
+      // kendi istekleri context.route'a uğramayabilir (kurulu sürümde uğruyor; test/submitter.test.ts
+      // bunu da dener). İkinci katman: bu sayfada service worker'ı devre dışı bırak.
+      const cdp = await browserContext.newCDPSession(page);
+      await cdp.send('Network.enable');
+      await cdp.send('Network.setBypassServiceWorker', { bypass: true });
+
       await browserContext.route('**/*', async (route: Route) => {
         let allow = true;
         try {
@@ -298,7 +386,7 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
           if (isMutating(req.method())) {
             allow = state.phase === 'login' && isFromPage(req, config.login?.url);
             if (!allow) {
-              const blocked: BlockedRequest = { method: req.method(), url: req.url(), phase: state.phase, sameSite: sameSite(req.url(), config.listingUrl) };
+              const blocked: BlockedRequest = { method: req.method(), url: req.url(), phase: state.phase, submission: looksLikeSubmission(req, publishedValues) };
               state.blocked.push(blocked);
               log.warn({ method: blocked.method, url: blocked.url, phase: blocked.phase }, 'DRY-RUN: yazan istek ENGELLENDİ');
             }
@@ -372,8 +460,11 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
     const hooks: StepHooks = {
       beforeClick: async () => {
         // Başarı işareti gönderimden ÖNCE de görünüyorsa config sahte başarı üretir: tıklama yok.
-        const early = await matchSuccess(page, config.success);
-        if (early) throw new PermanentError(`Başarı işareti gönderimden ÖNCE de görünüyor (${early}) — config güvenilmez, gönderilmedi`);
+        // (İlk tıklamadan sonra çok adımlı formun işareti meşru olarak görünebilir: bir daha bakma.)
+        if (!state.maybeSent) {
+          const early = await matchSuccess(page, config.success);
+          if (early) throw new PermanentError(`Başarı işareti gönderimden ÖNCE de görünüyor (${early}) — config güvenilmez, gönderilmedi`);
+        }
         state.maybeSent = true;
       },
     };

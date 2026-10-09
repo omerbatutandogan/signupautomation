@@ -374,7 +374,7 @@ function sleepMinutes(min: number, max: number): Promise<void> {
 }
 
 async function cmdSubmit(siteId: string, flags: Set<string>, productId: string): Promise<number> {
-  const { submitListing } = await import('./core/submitter.js');
+  const { submitListing, submitExitCode } = await import('./core/submitter.js');
   const dryRun = !flags.has('--live');
   const ledger = new Ledger();
   try {
@@ -387,7 +387,7 @@ async function cmdSubmit(siteId: string, flags: Set<string>, productId: string):
     if (outcome.artifactsDir) console.log(`   artifacts: ${outcome.artifactsDir}`);
     // Betik/zincir çağrılarında başarı yalnızca gerçekten tamamlanma (ya da zaten listelenmiş
     // olma) demektir: onaysız/hesapsız/kilitli atlamalar ve doğrulanamayan gönderim 0 DÖNMEZ.
-    return outcome.status === 'completed' || outcome.status === 'skipped_done' ? 0 : 1;
+    return submitExitCode(outcome.status);
   } finally {
     ledger.close();
   }

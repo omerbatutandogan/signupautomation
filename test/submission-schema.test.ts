@@ -32,6 +32,18 @@ describe('submission şeması', () => {
     expect(() => parseSubmissionConfig({ ...valid, id: 'Bad Id' }, 't')).toThrow(/id/);
     expect(() => parseSubmissionConfig({ ...valid, listingUrl: 'not a url' }, 't')).toThrow(/listingUrl/);
   });
+  it('login.url, listingUrl ile aynı SAYFA olamaz (sorgu / hash fark sayılmaz)', () => {
+    const login = (url: string) => ({ ...valid, loggedIn: '#out', login: { url, steps: [{ type: 'goto', url: '{{signupUrl}}' }] } });
+    expect(() => parseSubmissionConfig(login('https://dir-x.example/submit'), 't')).toThrow(/aynı sayfa/);
+    expect(() => parseSubmissionConfig(login('https://dir-x.example/submit?login=1'), 't')).toThrow(/aynı sayfa/);
+    expect(() => parseSubmissionConfig(login('https://dir-x.example/submit#giris'), 't')).toThrow(/aynı sayfa/);
+    expect(parseSubmissionConfig(login('https://dir-x.example/login'), 't').login?.url).toBe('https://dir-x.example/login');
+  });
+  it('upload adımı src/profile dışına çıkamaz', () => {
+    const withUpload = (file: string) => ({ ...valid, steps: [{ type: 'upload', selector: '#logo', file }] });
+    expect(() => parseSubmissionConfig(withUpload('../../.env'), 't')).toThrow(/upload dosyası/);
+    expect(parseSubmissionConfig(withUpload('assets/logo-512.png'), 't').steps).toHaveLength(1);
+  });
   it('login varsa adres ve adım ister', () => {
     expect(() => parseSubmissionConfig({ ...valid, login: { url: 'https://x.example/login', steps: [] } }, 't')).toThrow();
   });
