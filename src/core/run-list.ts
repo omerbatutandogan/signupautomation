@@ -15,8 +15,13 @@ export function classifyStatus(status: string): ListOutcome {
   return 'failed';
 }
 
-/** Son `max` sonucun HEPSİ başarısızsa dur. Atlananlar (skipped) ne sayılır ne de seriyi böler. */
-export function shouldStop(history: readonly ListOutcome[], max = 3): boolean {
+/**
+ * Son `max` sonucun HEPSİ başarısızsa dur. Atlananlar (skipped) ne sayılır ne de seriyi böler.
+ * Varsayılan 6: siteler birbirinden bağımsız ve her başarısızlık çoğunlukla farklı bir site sorunu (captcha,
+ * iş e-postası şartı, çok adımlı form). 3'te durmak 12 sitelik bir turu 4. sitede kesiyordu; sistem çapında bir
+ * bozulma (ağ, token, kod hatası) zaten arka arkaya birkaç başarısızlık olarak da görünür.
+ */
+export function shouldStop(history: readonly ListOutcome[], max = 6): boolean {
   const real = history.filter((h) => h !== 'skipped');
   return real.length >= max && real.slice(-max).every((h) => h === 'failed');
 }

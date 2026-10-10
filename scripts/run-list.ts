@@ -55,7 +55,7 @@ async function main(): Promise<void> {
     console.log(`   → ${status} (${outcome})`);
 
     if (shouldStop(history)) {
-      console.log('⏹ 3 ardışık başarısızlık — duruyorum. Artifact ve loglara bak, config/akış sorununu çöz.');
+      console.log('⏹ 6 ardışık başarısızlık — duruyorum. Artifact ve loglara bak, config/akış sorununu çöz.');
       break;
     }
     if (i < ids.length - 1 && outcome !== 'skipped') {

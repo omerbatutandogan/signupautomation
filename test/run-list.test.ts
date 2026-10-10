@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyStatus, gapSeconds, parseRunOneStatus, shouldStop } from '../src/core/run-list.js';
+import { classifyStatus, gapSeconds, parseRunOneStatus, shouldStop, type ListOutcome } from '../src/core/run-list.js';
 
 describe('classifyStatus', () => {
   it('completed / skipped_* / geri kalan her şey failed', () => {
@@ -10,19 +10,20 @@ describe('classifyStatus', () => {
 });
 
 describe('shouldStop', () => {
-  it('3 ardışık başarısızlıkta durur', () => {
-    expect(shouldStop(['failed', 'failed', 'failed'])).toBe(true);
-    expect(shouldStop(['completed', 'failed', 'failed', 'failed'])).toBe(true);
+  const f = (n: number): ListOutcome[] => Array.from({ length: n }, () => 'failed');
+  it('6 ardışık başarısızlıkta durur', () => {
+    expect(shouldStop(f(6))).toBe(true);
+    expect(shouldStop(['completed', ...f(6)])).toBe(true);
   });
-  it('arada başarı varsa ya da 3\'ten azsa durmaz', () => {
-    expect(shouldStop(['failed', 'failed'])).toBe(false);
-    expect(shouldStop(['failed', 'completed', 'failed', 'failed'])).toBe(false);
+  it('arada başarı varsa ya da 6\'dan azsa durmaz', () => {
+    expect(shouldStop(f(5))).toBe(false);
+    expect(shouldStop([...f(3), 'completed', ...f(5)])).toBe(false);
     expect(shouldStop([])).toBe(false);
   });
   it('atlananlar seriyi ne bozar ne sayılır', () => {
-    expect(shouldStop(['failed', 'skipped', 'failed', 'skipped', 'failed'])).toBe(true);
+    expect(shouldStop(['failed', 'skipped', 'failed', 'skipped', 'failed'], 3)).toBe(true);
     expect(shouldStop(['skipped', 'skipped', 'skipped'])).toBe(false);
-    expect(shouldStop(['failed', 'failed', 'skipped'])).toBe(false);
+    expect(shouldStop([...f(5), 'skipped'])).toBe(false);
   });
   it('eşik ayarlanabilir', () => {
     expect(shouldStop(['failed', 'failed'], 2)).toBe(true);
