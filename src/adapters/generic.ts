@@ -15,6 +15,7 @@ import {
   urlChangedAfterSubmit,
 } from '../core/errors.js';
 import { needsHumanIntervention, waitForCaptcha } from '../core/captcha.js';
+import { observePostSubmit } from '../core/post-submit.js';
 import {
   moveMouseTo,
   pickDescription,
@@ -318,6 +319,14 @@ async function runStep(ctx: SignupContext, step: Step, index: number, hooks: Ste
         new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
       ]).catch(() => null);
 
+      // Kayıt sonrası sayfanın gerçek durumu (oturum açık / kod isteniyor / "mailini kontrol et"):
+      // config'in varsayılan tahmini sık yanlış çıkıyor. Gözlem varsa runner doğrulama yolunu buna göre seçer.
+      const observed = await observePostSubmit(ctx.page);
+      if (observed.kind !== 'unknown') {
+        ctx.observed = observed;
+        log.info({ observed: observed.kind }, 'Kayıt sonrası durum otomatik tespit edildi');
+      }
+
       if (found) {
         log.debug({ found }, 'Beklenen içerik görüldü');
         return;
@@ -350,6 +359,10 @@ async function runStep(ctx: SignupContext, step: Step, index: number, hooks: Ste
           'expect deseni tutmadı ama URL değişti — zayıf başarı sinyali, expect deseni gözden geçirilmeli',
         );
       }
+
+      // Beklenen kalıp tutmadı ama sayfanın durumu AÇIKÇA tanındı (oturum açık, kod isteniyor, mail
+      // gönderildi yazıyor): kayıt gerçekten yapılmış, hata değil.
+      if (observed.kind !== 'unknown') return;
 
       if (step.optional) return;
       throw new PermanentError('Beklenen içerik görünmedi', {
@@ -571,6 +584,7 @@ export function makeGenericAdapter(cfg: SiteConfig): SiteAdapter {
         // ontoplist deseni) runner bu bilgiyi kullanıp mode:'none' önerir.
         // Kod config'i KENDİLİĞİNDEN değiştirmez, yalnızca öneriyi loglar.
         sawUrlChangeSignal: urlChangedAfterSubmit(cfg.signupUrl, ctx.page.url()),
+        ...(ctx.observed ? { observedPostSubmit: ctx.observed } : {}),
       };
     },
 

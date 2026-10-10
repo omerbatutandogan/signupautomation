@@ -18,6 +18,7 @@ import { waitForCaptchaCleared } from './captcha.js';
 import { awaitsMoveApproval, MOVE_MARKER } from './markers.js';
 import { canAutoVerify, checkDryRunPage } from './dry-run-check.js';
 import { enterVerificationCode } from './verification-entry.js';
+import { effectiveVerification } from './post-submit.js';
 import { derivePasswordForSite } from '../identity/password.js';
 import { signupEmail, usernameForSite } from '../identity/email.js';
 import { accountKey, DEFAULT_PRODUCT } from '../identity/account.js';
@@ -301,8 +302,14 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
       return outcome;
     }
 
+    // Kayıt sonrası sayfanın tespit edilen durumu config'in tahminini düzeltir (oturum açık kaldı, 6 haneli
+    // kod isteniyor, "mailini kontrol et" yazıyor).
+    const observed = result.status === 'submitted' ? result.observedPostSubmit : undefined;
+    const verifyPlan = effectiveVerification(adapter.verification, observed);
+    const needsMail = observed ? verifyPlan.needsMail : result.needsEmailVerification;
+
     // Doğrulama gerekmiyorsa (StackShare gibi otomatik doğrulayan siteler).
-    if (!result.needsEmailVerification) {
+    if (!needsMail) {
       const ok = (await adapter.confirmSuccess?.(ctx)) ?? true;
       // Hesap açıldı ama doğrulanmadıysa bunu sakla: "doğrulama
       // gerekmiyor" ile "site maili göndermiyor, hesap Pending kaldı"
@@ -313,7 +320,7 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
         note: ok
           ? unverified
             ? 'hesap açıldı — site doğrulama maili göndermiyor, DOĞRULANMAMIŞ'
-            : 'e-posta doğrulaması gerekmiyor'
+            : (verifyPlan.note ?? 'e-posta doğrulaması gerekmiyor')
           : 'başarı doğrulanamadı',
         artifactsDir: artifacts.dir,
       };
@@ -327,7 +334,7 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
 
     let verification: Awaited<ReturnType<typeof waitForVerificationEmail>>;
     try {
-      verification = await waitForVerificationEmail(gmailClient, adapter.verification, {
+      verification = await waitForVerificationEmail(gmailClient, verifyPlan.spec, {
         siteDomain,
         submittedAt,
         log,
@@ -354,7 +361,7 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
       // AYNI context'te aç — bazı siteler cookie sürekliliği istiyor.
       await browser.page.goto(verification.url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
     } else {
-      await enterVerificationCode(browser.page, adapter.verification, verification.code);
+      await enterVerificationCode(browser.page, verifyPlan.spec, verification.code);
     }
 
     await adapter.postVerify?.(ctx);

@@ -2,6 +2,7 @@
  * Projenin merkezi sözleşmesi. Diğer her modül bu tiplere karşı yazılır.
  */
 
+import type { PostSubmit } from './post-submit.js';
 import type { Locator, Page } from 'playwright';
 import type { Logger } from 'pino';
 
@@ -145,6 +146,8 @@ export interface Artifacts {
 }
 
 export interface SignupContext {
+  /** Kayıttan sonra sayfanın otomatik tespit edilen durumu (bkz. post-submit.ts); `expect` adımı doldurur. */
+  observed?: PostSubmit;
   page: Page;
   site: SiteConfig;
   identity: SignupIdentity;
@@ -172,6 +175,8 @@ export type SignupResult =
        * dosyasını KENDİLİĞİNDEN değiştirmez.
        */
       sawUrlChangeSignal?: boolean;
+      /** Kayıt sonrası sayfanın tespit edilen durumu; runner doğrulama yolunu buna göre ayarlar. */
+      observedPostSubmit?: PostSubmit;
     }
   | { status: 'already_exists' };
 
