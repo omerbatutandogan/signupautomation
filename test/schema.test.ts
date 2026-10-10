@@ -31,6 +31,12 @@ describe('StepSchema', () => {
     }
   });
 
+  it('usernameStyle yalnızca default | plain kabul eder', () => {
+    const base = { id: 'x', name: 'X', risk: 'low', signupUrl: 'https://x.example/signup', steps: [{ type: 'goto', url: '{{signupUrl}}' }], verification: { mode: 'none' } };
+    expect(parseSiteConfig({ ...base, usernameStyle: 'plain' }, 't').usernameStyle).toBe('plain');
+    expect(() => parseSiteConfig({ ...base, usernameStyle: 'kisa' }, 't')).toThrow(/usernameStyle/);
+  });
+
   it('bilinmeyen adım tipini reddeder', () => {
     expect(StepSchema.safeParse({ type: 'teleport', selector: '#x' }).success).toBe(false);
   });

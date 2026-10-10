@@ -208,7 +208,7 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
     const siteConfig = opts.siteConfig ?? (await loadSiteConfigFor(adapter));
     const identity = {
       email,
-      username: usernameForSite(profile.companyName.replace(/\W/g, ''), siteId),
+      username: usernameForSite(profile.companyName.replace(/\W/g, ''), siteId, siteConfig.usernameStyle),
       // Şifre HESAP anahtarından türetiliyor: varsayılan üründe anahtar =
       // siteId (mevcut hesapların şifresi değişmez), diğer ürünlerde
       // `urun@site`. Site politikası da uygulanıyor — `cli password` ile

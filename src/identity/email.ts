@@ -39,8 +39,9 @@ export function slugifySiteId(raw: string): string {
  * Kullanıcı adı üretir. E-posta sabit olduğu için ayrımı username taşıyor —
  * çoğu site alfanumerik + alt çizgi kabul eder.
  */
-export function usernameForSite(base: string, siteId: string): string {
+export function usernameForSite(base: string, siteId: string, style: 'default' | 'plain' = 'default'): string {
   const suffix = slugifySiteId(siteId).replace(/-/g, '').slice(0, 8);
   const root = base.toLowerCase().replace(/[^a-z0-9]/g, '');
-  return `${root}_${suffix}`.slice(0, 30);
+  // 'plain': yalnızca harf ve rakam (bazı siteler "Username cannot contain special characters" der, alt çizgi dahil).
+  return (style === 'plain' ? `${root}${suffix}` : `${root}_${suffix}`).slice(0, 30);
 }

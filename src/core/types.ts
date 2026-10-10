@@ -224,6 +224,8 @@ export interface SiteConfig {
   risk: RiskLevel;
   signupUrl: string;
   emailLocalPart: string;
+  /** 'plain': kullanıcı adı yalnızca harf+rakam (alt çizgi yok). */
+  usernameStyle?: 'default' | 'plain';
   steps: Step[];
   verification: VerificationSpec;
   success?: { afterVerifyUrlContains?: string[]; anyOf?: string[] };

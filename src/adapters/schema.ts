@@ -148,6 +148,8 @@ export const SiteConfigSchema = z
     signupUrl: z.string().url(),
     /** Tek e-posta mimarisinde kullanılmıyor ama config şemasında tutuluyor. */
     emailLocalPart: z.string().optional(),
+    /** 'plain': kullanıcı adı yalnızca harf+rakam (alt çizgi yok). Varsayılan: `geonew_<site>`. */
+    usernameStyle: z.enum(['default', 'plain']).optional(),
     steps: z.array(StepSchema).min(1, 'en az bir adım gerekli'),
     verification: VerificationSpecSchema,
     success: z

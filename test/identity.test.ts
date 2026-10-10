@@ -107,4 +107,11 @@ describe('usernameForSite', () => {
     expect(usernameForSite('averylongcompanynamehere', 'someverylongsiteid').length)
       .toBeLessThanOrEqual(30);
   });
+
+  it("'plain' stil yalnızca harf ve rakam üretir (alt çizgi yok), varsayılan değişmez", () => {
+    expect(usernameForSite('geonew', 'getworm')).toBe('geonew_getworm');
+    expect(usernameForSite('geonew', 'getworm', 'default')).toBe('geonew_getworm');
+    expect(usernameForSite('geonew', 'getworm', 'plain')).toBe('geonewgetworm');
+    expect(usernameForSite('averylongcompanynamehere', 'someverylongsiteid', 'plain')).toMatch(/^[a-z0-9]{1,30}$/);
+  });
 });
