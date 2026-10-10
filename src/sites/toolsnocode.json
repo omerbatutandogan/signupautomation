@@ -61,8 +61,7 @@
     }
   ],
   "verification": {
-    "mode": "link",
-    "timeoutMs": 180000
+    "mode": "none"
   },
-  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi."
+  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. | 2026-10-10 GERÇEK kayıtla: site doğrulama maili GÖNDERMİYOR; hesap anında açılıyor ve kayıttan sonra /login'e yönleniyor (türetilen şifreyle girişle doğrulandı, kullanıcı menüsü görünüyor). Eski mode:link her koşuyu 'mail gelmedi' diye hataya düşürüyordu. Listeleme için /tools/new ('Submit your tool — it's free') var."
 }
