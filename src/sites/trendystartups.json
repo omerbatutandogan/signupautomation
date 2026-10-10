@@ -65,5 +65,5 @@
     "mode": "link",
     "timeoutMs": 180000
   },
-  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. TODO eşlenmeyen zorunlu alanlar: #varchr (zorunlu, text)."
+  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. TODO eşlenmeyen zorunlu alanlar: #varchr (zorunlu, text). | 2026-10-10 GERÇEK denemede: kayıt formunda GÖRSEL (yazı) captcha var ('Type Image Values'); sistem bu tipi çözmüyor, alan boş bırakılınca form gönderilmiyor. Elle ya da görsel-captcha desteğiyle."
 }

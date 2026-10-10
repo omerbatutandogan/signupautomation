@@ -65,6 +65,6 @@
     "mode": "link",
     "timeoutMs": 180000
   },
-  "notes": "Doğrulandı (dry-run, 05.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. | 2026-10-10 GERÇEK kayıtla: site kullanıcı adında alt çizgiyi reddediyor ('Username cannot contain special characters') → usernameStyle:plain.",
+  "notes": "Doğrulandı (dry-run, 05.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. | 2026-10-10 GERÇEK kayıtla: site kullanıcı adında alt çizgiyi reddediyor ('Username cannot contain special characters') → usernameStyle:plain. | 2026-10-10 GERÇEK denemede: kullanıcı adı düzeltildikten sonra form gönderiliyor ama sayfa değişmiyor ve türetilen şifreyle giriş başarısız görünüyor; hesabın açılıp açılmadığı BELİRSİZ — elle bak.",
   "usernameStyle": "plain"
 }

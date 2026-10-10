@@ -75,5 +75,5 @@
     "mode": "link",
     "timeoutMs": 180000
   },
-  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. Uyarılar: GÖRÜNMEZ ZORUNLU ALAN (label[for=...] tıklaması gerekebilir): #accept_terms_of_service"
+  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. Uyarılar: GÖRÜNMEZ ZORUNLU ALAN (label[for=...] tıklaması gerekebilir): #accept_terms_of_service | 2026-10-10 GERÇEK denemede: kayıt formunda GÖRSEL (yazı) captcha var ('Enter the characters above') → 'Captcha failed', hesap açılmadı. Ayrıca site 'Receive exclusive token rewards and info' kutusunu ÖNCEDEN işaretli getiriyor (artık gönderimden önce kaldırılıyor)."
 }

@@ -48,6 +48,8 @@
     {
       "type": "expect",
       "anyOf": [
+        "text=/confirmation code/i",
+        "text=/confirm your email/i",
         "text=/check your (e-?mail|inbox)/i",
         "text=/verify your (e-?mail|account)/i",
         "text=/verification (e-?mail|link|message)/i",
@@ -61,8 +63,10 @@
     }
   ],
   "verification": {
-    "mode": "link",
+    "mode": "code",
+    "codeSelector": "#input-confirm-registration-code",
+    "codeSubmitSelector": "button:has-text(\"Submit\")",
     "timeoutMs": 180000
   },
-  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi."
+  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. | 2026-10-10 GERÇEK denemede: kayıttan sonra 'Confirm your email' ekranı 6 haneli KOD ister (link değil) → verification mode:code. | 2026-10-10: tekrar denemede 'Hesap zaten mevcut' ile tamamlandı AMA hesabın 6 haneli kodla doğrulanıp doğrulanmadığı BELİRSİZ (ilk denemedeki kod hiç girilmedi). Listeleme öncesi elle doğrula."
 }

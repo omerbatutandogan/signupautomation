@@ -91,5 +91,5 @@
     "codeSubmitSelector": "button:has-text('Submit')",
     "timeoutMs": 180000
   },
-  "notes": "Doğrulandı (dry-run, 05.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. | 2026-10-10 GERÇEK kayıtla doğrulandı: şartlar kutusu label[for=agreeToTerms] ile (DOM'dan) işaretlenmeli; kayıttan sonra /auth/verify-otp sayfası 6 AYRI KUTULU 6 haneli kod ister (link DEĞİL) → verification mode:code."
+  "notes": "Doğrulandı (dry-run, 05.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. | 2026-10-10 GERÇEK kayıtla doğrulandı: şartlar kutusu label[for=agreeToTerms] ile (DOM'dan) işaretlenmeli; kayıttan sonra /auth/verify-otp sayfası 6 AYRI KUTULU 6 haneli kod ister (link DEĞİL) → verification mode:code. | 2026-10-10 GERÇEK denemede: kod ekranına kadar gidildi; 3. denemeden sonra site tarafı belirsiz (kayıt formuna geri dönüyor). Hesap doğrulama bekliyor olabilir — elle bak."
 }
