@@ -1,0 +1,27 @@
+{
+  "id": "toolsnocode",
+  "name": "ToolsNoCode",
+  "listingUrl": "https://toolsnocode.com/tools/new",
+  "loggedIn": "input[placeholder='e.g. ChatGPT']",
+  "login": {
+    "url": "https://toolsnocode.com/login",
+    "steps": [
+      { "type": "goto", "url": "{{signupUrl}}" },
+      { "type": "fill", "selector": "input[type='email']", "field": "email" },
+      { "type": "fill", "selector": "input[type='password']", "field": "password" },
+      { "type": "click", "selector": "button:has-text('Sign in')" }
+    ]
+  },
+  "steps": [
+    { "type": "goto", "url": "{{signupUrl}}" },
+    { "type": "fill", "selector": "input[placeholder='e.g. ChatGPT']", "field": "companyName" },
+    { "type": "fill", "selector": "input[placeholder='Short description']", "field": "tagline" },
+    { "type": "fill", "selector": "textarea[placeholder^='Detailed description']", "field": "description" },
+    { "type": "fill", "selector": "input[placeholder='https://...']", "field": "website" },
+    { "type": "select", "selector": "select:has-text('Choose a category')", "value": "Coding & Development" },
+    { "type": "select", "selector": "select:has-text('Freemium')", "field": "pricing" },
+    { "type": "click", "selector": "button:has-text('Publish Tool')" }
+  ],
+  "success": { "anyOf": ["h1:has-text('geo.new')", "text=/tool (has been )?(published|submitted|added)/i"] },
+  "notes": "Form 2026-10-10'da gerçek oturumla incelendi (toolsnocode.com/tools/new, 'Publish Tool'). Alanlar yer tutucu metinle seçilir (name/id yok). Kategori sabit 'Coding & Development' (geo.new bir geliştirici API'si) — ürün sahibi onaylamalı. Logo/ekran görüntüsü alanları atlandı (logo dosyaları henüz yok). BAŞARI İŞARETİ DOĞRULANMADI (gönderilmedi): tutmazsa canlı çalışma 'unconfirmed' kalır. Not: 'Publish Tool' aracı HEMEN herkese açık yayınlıyor olabilir."
+}
