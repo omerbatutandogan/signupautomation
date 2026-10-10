@@ -96,6 +96,10 @@ export async function launchContext(
   let page: Page;
   try {
     captchaNetwork = attachCaptchaSniffer(context);
+    // CLI `tsx` ile çalışıyor ve esbuild `keepNames` ile her adlandırılmış fonksiyona `__name(...)` ekliyor;
+    // `page.evaluate` içindeki bu çağrı sayfada tanımsız olduğu için ReferenceError verir (kayıt sonrası durum
+    // tanıma sessizce 'unknown' dönüyordu). Vitest'te bu yardımcı eklenmediği için testler geçiyordu.
+    await context.addInitScript('globalThis.__name = globalThis.__name || ((fn) => fn);');
     page = context.pages()[0] ?? (await context.newPage());
     page.setDefaultTimeout(15_000);
   } catch (err) {

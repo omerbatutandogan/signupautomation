@@ -321,7 +321,7 @@ async function runStep(ctx: SignupContext, step: Step, index: number, hooks: Ste
 
       // Kayıt sonrası sayfanın gerçek durumu (oturum açık / kod isteniyor / "mailini kontrol et"):
       // config'in varsayılan tahmini sık yanlış çıkıyor. Gözlem varsa runner doğrulama yolunu buna göre seçer.
-      const observed = await observePostSubmit(ctx.page);
+      const observed = await observePostSubmit(ctx.page, log);
       if (observed.kind !== 'unknown') {
         ctx.observed = observed;
         log.info({ observed: observed.kind }, 'Kayıt sonrası durum otomatik tespit edildi');

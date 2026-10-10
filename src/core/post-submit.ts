@@ -91,11 +91,13 @@ export function decidePostSubmit(f: PageFacts): PostSubmit {
   return { kind: 'unknown' };
 }
 
-export async function observePostSubmit(page: Page): Promise<PostSubmit> {
+export async function observePostSubmit(page: Page, log?: { warn(obj: object, msg: string): void }): Promise<PostSubmit> {
   try {
     return decidePostSubmit(await collectFacts(page));
-  } catch {
-    return { kind: 'unknown' }; // sayfa gezindi/kapandı: kanıt yok
+  } catch (err) {
+    // Sayfa gezindi/kapandı ya da sayfa içi kod çalışmadı: kanıt yok. Sessiz yutma teşhisi zorlaştırıyordu.
+    log?.warn({ err: (err as Error).message.split('\n')[0] }, 'Kayıt sonrası durum tespit edilemedi');
+    return { kind: 'unknown' };
   }
 }
 
