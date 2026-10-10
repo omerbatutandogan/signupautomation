@@ -80,6 +80,24 @@ async function locate(ctx: SignupContext, selector: string, timeoutMs: number): 
   }
 }
 
+/**
+ * Etiketin bağlı olduğu onay kutusunu/radyoyu DOM üzerinden işaretler (asla kaldırmaz).
+ *
+ * Gerçek tıklama etiketin ORTASINA gider; etiketin içinde "Terms of Service" gibi bir bağlantı varsa
+ * tıklama oraya düşer ve kutu boş kalır (bufferapps'te canlı kayıtta yaşandı; dry-run bu yolu zaten
+ * DOM'dan işaretlediği için hiç görmemişti). 'skipped': etiket bir onay kutusu/radyoya bağlı değil
+ * (`label[for]` bir gönder butonunu gösterebilir) → dokunulmaz.
+ */
+async function tickLabelControl(locator: Locator): Promise<'ticked' | 'already' | 'skipped' | 'failed'> {
+  return locator.evaluate((el) => {
+    const control = (el as HTMLLabelElement).control;
+    if (!(control instanceof HTMLInputElement) || (control.type !== 'checkbox' && control.type !== 'radio')) return 'skipped';
+    if (control.checked) return 'already';
+    control.click();
+    return control.checked ? 'ticked' : 'failed';
+  });
+}
+
 /** Bir adımı yürütür. */
 async function runStep(ctx: SignupContext, step: Step, index: number, hooks: StepHooks): Promise<void> {
   const timeoutMs = step.timeoutMs ?? DEFAULT_STEP_TIMEOUT;
@@ -203,19 +221,24 @@ async function runStep(ctx: SignupContext, step: Step, index: number, hooks: Ste
         // Etiketin İÇİNDEKİ bağlantıya (Şartlar) yanlışlıkla gitmemek için etiket değil,
         // bağlı olduğu kutunun kendisi DOM üzerinden işaretlenir.
         if (isCheckboxLabelClick(step.selector ?? '')) {
-          // Etiketin bağlı olduğu öğe bir onay kutusu/radyo DEĞİLSE (ör. `label[for]` bir gönder
-          // butonunu gösteriyor) dokunma: o tıklama formu gönderirdi.
-          const ticked = await locator.evaluate((el) => {
-            const control = (el as HTMLLabelElement).control;
-            if (!(control instanceof HTMLInputElement) || (control.type !== 'checkbox' && control.type !== 'radio')) return 'skipped';
-            if (!control.checked) control.click();
-            return 'ticked';
-          });
-          log.info({ selector: step.selector, ticked }, ticked === 'ticked' ? 'DRY-RUN: onay kutusu işaretlendi' : 'DRY-RUN: etiket bir onay kutusuna bağlı değil, atlandı');
+          const ticked = await tickLabelControl(locator);
+          log.info({ selector: step.selector, ticked }, ticked === 'skipped' ? 'DRY-RUN: etiket bir onay kutusuna bağlı değil, atlandı' : 'DRY-RUN: onay kutusu işaretlendi');
           return;
         }
         log.info({ selector: step.selector }, 'DRY-RUN: tıklama atlandı');
         return;
+      }
+
+      // Onay kutusu etiketi: etiketin ortasına tıklamak içindeki bağlantıya (Şartlar) düşebilir; kutuyu
+      // doğrudan işaretle. Bu bir gönderim DEĞİL, bu yüzden beforeClick kancası çağrılmaz. İşaretlenemezse
+      // (kutuya bağlı değil / işaretlenmedi) normal tıklamaya düşülür.
+      if (isCheckboxLabelClick(step.selector ?? '')) {
+        const ticked = await tickLabelControl(locator);
+        if (ticked === 'ticked' || ticked === 'already') {
+          log.info({ selector: step.selector, ticked }, 'Onay kutusu işaretlendi');
+          return;
+        }
+        log.debug({ selector: step.selector, ticked }, 'Etiket işaretlenemedi, gerçek tıklamaya düşülüyor');
       }
 
       // Öğe bulundu, tıklama GERÇEKTEN yapılacak: çağıran taraf (listeleme) "gönderim artık

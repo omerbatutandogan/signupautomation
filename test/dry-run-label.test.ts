@@ -171,6 +171,46 @@ describe('dry-run: etiket bir onay kutusuna bağlı DEĞİLSE dokunulmaz', () =>
   }, 30_000);
 });
 
+describe('gerçek çalıştırma: onay kutusu etiketi', () => {
+  // Etiketin içinde geniş bir "Şartlar" bağlantısı var: etiketin ortasına gerçek tıklama bağlantıya düşer
+  // ve kutu boş kalırdı (bufferapps, canlı kayıt). Canlıda da kutu DOM'dan işaretlenir.
+  const PAGE = `
+    <form id="f"><input type="checkbox" id="terms-box" name="terms" required>
+      <label for="terms-box" id="lbl"><a href="#terms" id="tl" style="display:inline-block;width:400px">Terms of Service</a></label>
+      <button id="submit" type="button">Join</button></form>
+    <script>window.__linkClicked = false; document.getElementById('tl').addEventListener('click', (e) => { e.preventDefault(); window.__linkClicked = true; });</script>`;
+  const state = () => page.evaluate(() => ({
+    checked: (document.getElementById('terms-box') as HTMLInputElement).checked,
+    linkClicked: (window as unknown as { __linkClicked: boolean }).__linkClicked,
+  }));
+
+  it('kutuyu işaretler, bağlantıya GİTMEZ; beforeClick çağrılmaz (bu bir gönderim değil)', async () => {
+    await page.setContent(PAGE);
+    const site = config([{ type: 'click', selector: "label[for='terms-box']" }]);
+    const hook = vi.fn();
+    await runSteps(context(site, false), site.steps, { beforeClick: hook });
+    expect(await state()).toEqual({ checked: true, linkClicked: false });
+    expect(hook).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it('zaten işaretli kutuyu KALDIRMAZ', async () => {
+    await page.setContent(PAGE.replace('name="terms"', 'name="terms" checked'));
+    const site = config([{ type: 'click', selector: "label[for='terms-box']" }]);
+    await runSteps(context(site, false), site.steps);
+    expect((await state()).checked).toBe(true);
+  }, 30_000);
+
+  it('etiket onay kutusuna bağlı değilse (gönder butonu) normal gerçek tıklamaya düşer ve kanca çağrılır', async () => {
+    await page.setContent(`<button id="go" type="button">Go</button><label for="go" id="lbl" style="display:block;width:200px;height:30px">Go</label>
+      <script>window.__clicks = 0; document.getElementById('go').addEventListener('click', () => window.__clicks++);</script>`);
+    const site = config([{ type: 'click', selector: "label[for='go']" }]);
+    const hook = vi.fn();
+    await runSteps(context(site, false), site.steps, { beforeClick: hook });
+    expect(hook).toHaveBeenCalledTimes(1);
+    expect(await page.evaluate(() => (window as unknown as { __clicks: number }).__clicks)).toBe(1);
+  }, 30_000);
+});
+
 describe('runSteps — beforeClick kancası', () => {
   const PAGE = `<form id="f"><button id="a" type="button">A</button><button id="b" type="button">B</button></form>
     <script>window.__clicks = []; for (const id of ['a','b']) document.getElementById(id).addEventListener('click', () => window.__clicks.push(id));</script>`;
