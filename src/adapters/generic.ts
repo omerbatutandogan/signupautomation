@@ -98,6 +98,39 @@ async function tickLabelControl(locator: Locator): Promise<'ticked' | 'already' 
   });
 }
 
+/** Pazarlama / bülten onayı olduğunu gösteren kutu metinleri. */
+const MARKETING_TEXT = /newsletter|marketing|promotion|special offers?|exclusive|rewards|deals|discounts?|product updates|digest|subscribe|partners?|receive .{0,40}(e-?mails?|news|info|updates|offers)|send me/i;
+/** Hukuki metin içeren kutu (şartlar/gizlilik) pazarlama sayılmaz: birleşik onaylar dokunulmadan kalır. */
+const LEGAL_TEXT = /terms|privacy|policy|conditions|\btos\b|eula|user agreement|cookies/i;
+
+/**
+ * Siteler pazarlama / bülten kutusunu ÖNCEDEN işaretli getirebilir (minds: "Receive exclusive token rewards
+ * and info"). Kayıt bunu işaretli göndermemeli: gerçek bir tıklamadan hemen önce işaretli pazarlama
+ * kutuları kaldırılır. Yalnızca pazarlama metni taşıyıp hukuki metin taşımayanlara dokunulur; kaldırılamazsa
+ * (site geri işaretlerse) 'stuck' döner ve loglanır.
+ */
+async function untickMarketingBoxes(ctx: SignupContext): Promise<Array<{ text: string; result: 'unticked' | 'stuck' }>> {
+  const patterns = { marketing: MARKETING_TEXT.source, legal: LEGAL_TEXT.source };
+  const done = await ctx.page
+    .evaluate(({ marketing, legal }) => {
+      const marketingRe = new RegExp(marketing, 'i');
+      const legalRe = new RegExp(legal, 'i');
+      const out: Array<{ text: string; result: 'unticked' | 'stuck' }> = [];
+      for (const box of Array.from(document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))) {
+        if (!box.checked) continue;
+        const labelText = Array.from(box.labels ?? []).map((l) => l.textContent ?? '').join(' ');
+        const text = `${labelText} ${box.getAttribute('aria-label') ?? ''} ${labelText ? '' : (box.parentElement?.textContent ?? '')}`.replace(/\s+/g, ' ').trim().slice(0, 200);
+        if (!marketingRe.test(text) || legalRe.test(text)) continue;
+        box.click();
+        out.push({ text, result: box.checked ? 'stuck' : 'unticked' });
+      }
+      return out;
+    }, patterns)
+    .catch(() => [] as Array<{ text: string; result: 'unticked' | 'stuck' }>);
+  for (const d of done) ctx.log.warn({ text: d.text, result: d.result }, d.result === 'unticked' ? 'Önceden işaretli pazarlama kutusu KALDIRILDI' : 'Pazarlama kutusu kaldırılamadı');
+  return done;
+}
+
 /** Bir adımı yürütür. */
 async function runStep(ctx: SignupContext, step: Step, index: number, hooks: StepHooks): Promise<void> {
   const timeoutMs = step.timeoutMs ?? DEFAULT_STEP_TIMEOUT;
@@ -240,6 +273,9 @@ async function runStep(ctx: SignupContext, step: Step, index: number, hooks: Ste
         }
         log.debug({ selector: step.selector, ticked }, 'Etiket işaretlenemedi, gerçek tıklamaya düşülüyor');
       }
+
+      // Gönderimden önce: önceden işaretli gelen pazarlama/bülten kutuları kaldırılır.
+      await untickMarketingBoxes(ctx);
 
       // Öğe bulundu, tıklama GERÇEKTEN yapılacak: çağıran taraf (listeleme) "gönderim artık
       // yapılmış olabilir" bilgisini tam burada alır; fırlatırsa tıklama hiç yapılmaz.
