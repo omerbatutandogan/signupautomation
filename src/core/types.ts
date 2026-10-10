@@ -115,8 +115,13 @@ export interface VerificationSpec {
   subjectContains?: string[];
   /** Verilirse link çıkarmada generic skorlama yerine bu regex kullanılır. */
   linkPattern?: string;
-  /** 'code' modunda kodun gireceği alanın selector'ı. */
+  /**
+   * 'code' modunda kodun gireceği alanın selector'ı. Seçici BİRDEN ÇOK kutuya uyuyorsa (rakam başına bir
+   * kutu olan 6 haneli kod girişleri) kutu sayısı kod uzunluğuna eşit olmalı: her kutuya kendi rakamı yazılır.
+   */
   codeSelector?: string;
+  /** Kod girildikten sonra tıklanacak buton (yoksa Enter basılır). */
+  codeSubmitSelector?: string;
   timeoutMs?: number;
 }
 

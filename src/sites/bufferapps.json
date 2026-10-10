@@ -71,6 +71,8 @@
     {
       "type": "expect",
       "anyOf": [
+        "text=/authentication code/i",
+        "text=/verify account/i",
         "text=/check your (e-?mail|inbox)/i",
         "text=/verify your (e-?mail|account)/i",
         "text=/verification (e-?mail|link|message)/i",
@@ -84,8 +86,10 @@
     }
   ],
   "verification": {
-    "mode": "link",
+    "mode": "code",
+    "codeSelector": "input[inputmode='numeric']",
+    "codeSubmitSelector": "button:has-text('Submit')",
     "timeoutMs": 180000
   },
-  "notes": "Doğrulandı (dry-run, 05.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi."
+  "notes": "Doğrulandı (dry-run, 05.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. | 2026-10-10 GERÇEK kayıtla doğrulandı: şartlar kutusu label[for=agreeToTerms] ile (DOM'dan) işaretlenmeli; kayıttan sonra /auth/verify-otp sayfası 6 AYRI KUTULU 6 haneli kod ister (link DEĞİL) → verification mode:code."
 }

@@ -17,6 +17,7 @@ import { classify, CaptchaRequiredError, ManualReviewError } from './errors.js';
 import { waitForCaptchaCleared } from './captcha.js';
 import { awaitsMoveApproval, MOVE_MARKER } from './markers.js';
 import { canAutoVerify, checkDryRunPage } from './dry-run-check.js';
+import { enterVerificationCode } from './verification-entry.js';
 import { derivePasswordForSite } from '../identity/password.js';
 import { signupEmail, usernameForSite } from '../identity/email.js';
 import { accountKey, DEFAULT_PRODUCT } from '../identity/account.js';
@@ -353,10 +354,7 @@ export async function runSite(siteId: string, opts: RunOptions): Promise<RunOutc
       // AYNI context'te aç — bazı siteler cookie sürekliliği istiyor.
       await browser.page.goto(verification.url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
     } else {
-      const selector = adapter.verification.codeSelector;
-      if (!selector) throw new ManualReviewError('codeSelector tanımsız');
-      await browser.page.locator(selector).first().fill(verification.code);
-      await browser.page.keyboard.press('Enter');
+      await enterVerificationCode(browser.page, adapter.verification, verification.code);
     }
 
     await adapter.postVerify?.(ctx);

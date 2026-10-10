@@ -136,6 +136,7 @@ export const VerificationSpecSchema = z.object({
   /** Verilirse generic skorlama yerine bu regex kullanılır — daha deterministik. */
   linkPattern: z.string().optional(),
   codeSelector: z.string().optional(),
+  codeSubmitSelector: z.string().optional(),
   timeoutMs: z.number().int().positive().optional(),
 });
 
