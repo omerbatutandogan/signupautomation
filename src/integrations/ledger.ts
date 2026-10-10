@@ -224,6 +224,25 @@ export class Ledger {
   }
 
   /**
+   * Gerçekte AÇIK olan ama yanlış sonuçla kaydedilmiş bir hesabı "tamamlandı" olarak işler
+   * (ör. kayıttan sonra oturum açık kaldı ama config doğrulama maili bekledi ve `failed` yazıldı).
+   *
+   * Yalnızca İNSAN kanıtıyla çağrılmalı (türetilen şifreyle giriş yapıldı gibi): kayıt, listeleme
+   * akışının "hesap var" kapısını açar. Kimlik kaydı (credentials) şart; zaten tamamlanmışsa dokunmaz.
+   * Satır başlangıcı bugünden ÖNCEYE yazılır: bu bir kayıt denemesi değil, günlük sınırı tüketmemeli.
+   */
+  adoptAccount(siteId: SiteId, note: string): 'adopted' | 'already_completed' | 'no_credentials' {
+    if (!this.credentials(siteId)) return 'no_credentials';
+    if (this.terminalResult(siteId)?.status === 'completed') return 'already_completed';
+    const id = this.startAttempt(siteId, `adopt-${Date.now().toString(36)}`, false);
+    this.finishAttempt(id, 'completed', note);
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    this.db.prepare('UPDATE attempts SET started_at = ? WHERE id = ?').run(startOfDay.getTime() - 1, id);
+    return 'adopted';
+  }
+
+  /**
    * Site daha önce terminal bir sonuca ulaştı mı?
    * Sheet yanlışlıkla sıfırlansa bile tekrar kayıt denemesini engeller.
    *
@@ -234,7 +253,7 @@ export class Ledger {
   terminalResult(siteId: SiteId): { status: string; note: string | null } | null {
     const row = this.db
       .prepare(
-        'SELECT status, note FROM attempts WHERE site_id = ? AND terminal = 1 AND dry_run = 0 ORDER BY finished_at DESC LIMIT 1',
+        'SELECT status, note FROM attempts WHERE site_id = ? AND terminal = 1 AND dry_run = 0 ORDER BY finished_at DESC, id DESC LIMIT 1',
       )
       .get(siteId) as { status: string; note: string | null } | undefined;
     return row ?? null;

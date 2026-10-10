@@ -49,6 +49,7 @@
     {
       "type": "expect",
       "anyOf": [
+        "text=/log out/i",
         "text=/check your (e-?mail|inbox)/i",
         "text=/verify your (e-?mail|account)/i",
         "text=/verification (e-?mail|link|message)/i",
@@ -62,8 +63,12 @@
     }
   ],
   "verification": {
-    "mode": "link",
-    "timeoutMs": 180000
+    "mode": "none"
   },
-  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi."
+  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. | 2026-10-10 GERÇEK kayıtla: hesap anında açılıyor ve oturum AÇIK kalıyor ('Log out', 'Submit project' görünüyor); doğrulama maili yok → mode:none, başarı işareti 'Log out'. Listeleme için 'Submit project' bağlantısı var.",
+  "success": {
+    "anyOf": [
+      "text=/log out/i"
+    ]
+  }
 }

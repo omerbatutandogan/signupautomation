@@ -65,6 +65,7 @@ Komutlar:
   approve-profile <ürün>  Ürün bilgisini ve logo dosyalarını HERKESE AÇIK listeleme için onayla
                           (etkileşimli terminal + yazılı onay ister; içerik değişirse geçersiz olur)
   list                    Tanımlı site config'lerini listele
+  adopt-account <siteId> --note "<kanıt>"  Gerçekte AÇIK ama yanlış kaydedilmiş hesabı tamamlandı yap
   unlock <siteId>         Takılı kilidi temizle
   password <siteId>       Türetilmiş şifreyi yazdır
   check-gmail             Gmail bağlantısını doğrula
@@ -310,6 +311,30 @@ async function cmdList(): Promise<number> {
     }
   }
   return 0;
+}
+
+/**
+ * Gerçekte açık olan hesabı "tamamlandı" yapar. Kanıt notu ZORUNLU (ör. "türetilen şifreyle girişle doğrulandı").
+ * Kayıt akışı hesabı açmış ama sonucu yanlış sınıflandırmışsa (oturum açık kaldı, doğrulama yok) kullanılır.
+ */
+function cmdAdoptAccount(siteId: string, note: string | undefined): number {
+  if (!note || note.trim().length < 10) {
+    console.error('--note "<kanıt>" gerekli (en az 10 karakter): hesabın gerçekten açık olduğunu neyle doğruladın?');
+    return 1;
+  }
+  const ledger = new Ledger();
+  try {
+    const result = ledger.adoptAccount(siteId, `elle doğrulandı: ${note.trim()}`);
+    const message = {
+      adopted: `✅ ${siteId}: hesap "tamamlandı" olarak kaydedildi.`,
+      already_completed: `ℹ️  ${siteId}: zaten tamamlanmış, değişiklik yok.`,
+      no_credentials: `❌ ${siteId}: kimlik kaydı yok (bu hesap sistemde açılmamış).`,
+    }[result];
+    console.log(message);
+    return result === 'no_credentials' ? 1 : 0;
+  } finally {
+    ledger.close();
+  }
 }
 
 function cmdUnlock(siteId: string): number {
@@ -624,6 +649,17 @@ async function main(): Promise<void> {
     case 'list':
       code = await cmdList();
       break;
+    case 'adopt-account': {
+      const siteId = positional[0];
+      if (!siteId) {
+        console.error('Site id gerekli.');
+        code = 1;
+        break;
+      }
+      const noteIdx = process.argv.indexOf('--note');
+      code = cmdAdoptAccount(accountKey(productId, siteId), noteIdx >= 0 ? process.argv[noteIdx + 1] : undefined);
+      break;
+    }
     case 'unlock': {
       const siteId = positional[0];
       if (!siteId) {
