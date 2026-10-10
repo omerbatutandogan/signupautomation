@@ -74,5 +74,5 @@
     "mode": "link",
     "timeoutMs": 180000
   },
-  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi."
+  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. | 2026-10-10 GERÇEK denemede: form gönderilince beklenen içerik görünmedi; sayfa forum ana sayfası, hesap açılıp açılmadığı BELİRSİZ. Yazılan değer kırpıldı uyarısı vardı (alan sınırı dar)."
 }
