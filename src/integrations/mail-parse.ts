@@ -36,7 +36,12 @@ export function isVerificationCandidate(
 
   const fromDomain = domainOfAddress(msg.from);
   const expected = spec.from ? domainOfAddress(spec.from.replace(/^\*@/, 'x@')) : opts.siteDomain;
-  if (fromDomain && expected && fromDomain !== expected) return false;
+  if (fromDomain && expected && fromDomain !== expected) {
+    // Gönderici başka bir alan adı olabilir (Discourse forumları discoursemail.com'dan, bazı siteler Mailgun/
+    // SendGrid markalı alan adlarından yollar). Config `from` vermediyse: mailin KENDİ içeriği site alan adına
+    // bağlantı veriyorsa aday sayılır. `from` verilmişse kesin kalır.
+    if (spec.from || !mentionsSiteDomain(msg, opts.siteDomain)) return false;
+  }
 
   if (spec.subjectContains?.length) {
     const subj = msg.subject.toLowerCase();
@@ -44,6 +49,13 @@ export function isVerificationCandidate(
   }
 
   return true;
+}
+
+/** Mailin gövdesi (metin ya da HTML) site alan adını (ör. endnote.com, community.endnote.com) anıyor mu? */
+export function mentionsSiteDomain(msg: ParsedMessage, siteDomain: string): boolean {
+  if (!siteDomain) return false;
+  const body = `${msg.text} ${msg.html}`.toLowerCase();
+  return body.includes(siteDomain.toLowerCase());
 }
 
 /** Doğrulama linki olamayacak hostlar / uzantılar. */

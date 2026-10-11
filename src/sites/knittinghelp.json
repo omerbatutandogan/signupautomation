@@ -65,5 +65,5 @@
     "mode": "link",
     "timeoutMs": 180000
   },
-  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha: hcaptcha. Uyarılar: Captcha tespit edildi: hcaptcha"
+  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha: hcaptcha. Uyarılar: Captcha tespit edildi: hcaptcha | 2026-10-11 GERÇEK denemede: hCaptcha: 2captcha 180 sn içinde çözemedi, sonra insan bekledi → manual. hCaptcha'lı sitelerde otomatik çözüm güvenilir değil."
 }

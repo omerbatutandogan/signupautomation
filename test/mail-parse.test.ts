@@ -218,6 +218,33 @@ describe('isVerificationCandidate — tek e-posta ile mail eşleştirmesi', () =
     ).toBe(false);
   });
 
+  it('üçüncü taraf göndericiden (Discourse) gelen mail, gövdesi site alan adına bağlanıyorsa KABUL edilir', () => {
+    const m = msg({
+      from: 'Discourse <notifications@endnote.discoursemail.com>',
+      html: '<a href="https://community.endnote.com/u/activate-account/abcdef0123456789abcdef">Confirm your new account</a>',
+      receivedAt: submittedAt + 30_000,
+    });
+    expect(isVerificationCandidate(m, { mode: 'link' }, { siteDomain: 'endnote.com', submittedAt })).toBe(true);
+  });
+
+  it('üçüncü taraf göndericinin maili site alan adını HİÇ anmıyorsa reddedilir (başka sitenin maili)', () => {
+    const m = msg({
+      from: 'Discourse <notifications@other.discoursemail.com>',
+      html: '<a href="https://forum.baska-site.org/u/activate-account/abcdef0123456789abcdef">Confirm</a>',
+      receivedAt: submittedAt + 30_000,
+    });
+    expect(isVerificationCandidate(m, { mode: 'link' }, { siteDomain: 'endnote.com', submittedAt })).toBe(false);
+  });
+
+  it('config `from` verdiyse üçüncü taraf gevşemesi UYGULANMAZ (kesin kalır)', () => {
+    const m = msg({
+      from: 'notifications@endnote.discoursemail.com',
+      text: 'visit https://community.endnote.com/activate',
+      receivedAt: submittedAt + 30_000,
+    });
+    expect(isVerificationCandidate(m, { mode: 'link', from: 'noreply@endnote.com' }, { siteDomain: 'endnote.com', submittedAt })).toBe(false);
+  });
+
   it('kayıttan önce gelen maili reddeder (bayat/alakasız mail)', () => {
     const m = msg({
       from: 'noreply@alternativeto.net',

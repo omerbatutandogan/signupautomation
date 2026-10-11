@@ -65,5 +65,5 @@
     "mode": "link",
     "timeoutMs": 180000
   },
-  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi."
+  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. | 2026-10-11 GERÇEK denemede: Discourse forumu: doğrulama maili discoursemail.com'dan gelir (artık gövdesi site alan adına bağlandığı için eşleşiyor). E-posta doğrulandı AMA 'A moderator must manually approve your new account' — hesap moderatör onayı bekliyor, kullanılamaz."
 }
