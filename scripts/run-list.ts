@@ -2,7 +2,7 @@
  * Verilen siteleri sırayla GERÇEK kayıt olarak çalıştırır (run-one), siteler arasında rastgele bekler.
  *
  * Kullanım:  npx tsx scripts/run-list.ts <id> [<id> ...]      ya da   npx tsx scripts/run-list.ts --file liste.txt
- * Durdurma:  data/pilot/STOP dosyası oluştur (sıradaki siteden önce durur) — ya da 3 ardışık başarısızlık.
+ * Durdurma:  data/pilot/STOP dosyası oluştur (sıradaki siteden önce durur) — ya da `--max-failures N` (varsayılan 6) ardışık başarısızlık.
  * Günlük sınır, kilitler ve risk kapıları run-one'ın kendi içinde (runSite) zaten uygulanır.
  */
 
@@ -29,7 +29,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  let ids = args.filter((a) => !a.startsWith('--'));
+  const maxIdx = args.indexOf('--max-failures');
+  const maxFailures = maxIdx >= 0 ? Number(args[maxIdx + 1]) : 6;
+  if (!Number.isInteger(maxFailures) || maxFailures < 1) throw new Error('--max-failures pozitif tam sayı olmalı');
+  let ids = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--file' && args[i - 1] !== '--max-failures');
   const fileIdx = args.indexOf('--file');
   if (fileIdx >= 0) ids = (await readFile(args[fileIdx + 1]!, 'utf8')).split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
   if (ids.length === 0) throw new Error('Site id verilmedi');
@@ -54,8 +57,8 @@ async function main(): Promise<void> {
     await appendFile(`${DIR}/results.jsonl`, `${JSON.stringify({ id, status, outcome, startedAt, finishedAt: new Date().toISOString() })}\n`);
     console.log(`   → ${status} (${outcome})`);
 
-    if (shouldStop(history)) {
-      console.log('⏹ 6 ardışık başarısızlık — duruyorum. Artifact ve loglara bak, config/akış sorununu çöz.');
+    if (shouldStop(history, maxFailures)) {
+      console.log(`⏹ ${maxFailures} ardışık başarısızlık — duruyorum. Artifact ve loglara bak, config/akış sorununu çöz.`);
       break;
     }
     if (i < ids.length - 1 && outcome !== 'skipped') {
