@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { annotate, classifyFailure, looksDynamicSelector, readyTable, DURUM } from '../src/discovery/annotate.js';
+import { annotate, classifyFailure, classifyRealRun, looksDynamicSelector, readyTable, realRunSegment, DURUM } from '../src/discovery/annotate.js';
 
 /**
  * Sheet'e yazılacak sınıflar. Gerçek verify-drafts çıktılarından (2026-10-06):
@@ -106,5 +106,135 @@ describe('readyTable', () => {
 
   it('Sheet\'te hiç satırı olmayan config\'i listeye almaz', () => {
     expect(readyTable(ready, [l('SaaS', 2, 'alpha')]).map((r) => r[0])).toEqual(['https://alpha.com']);
+  });
+});
+
+
+/**
+ * Gerçek koşunun config notlarına bıraktığı engel ("| 2026-10-10 GERÇEK denemede: …") filtrelenebilir sınıfa çevrilir.
+ * Metinler gerçek config'lerden (12 Ekim 2026) olduğu gibi alınmıştır.
+ */
+describe('realRunSegment', () => {
+  it('SON "GERÇEK" bölümünü alır ve tarih önekini atar', () => {
+    const notes = 'Doğrulandı (dry-run). | 2026-10-10 GERÇEK denemede: ilk bulgu. | 2026-10-12 GERÇEK denemede: son bulgu.';
+    expect(realRunSegment(notes)).toBe('GERÇEK denemede: son bulgu.');
+  });
+  it('gerçek koşu notu yoksa null', () => {
+    expect(realRunSegment('Doğrulandı (dry-run, 06.10.2026) Keşif: direct-path.')).toBeNull();
+    expect(realRunSegment('')).toBeNull();
+  });
+});
+
+describe('classifyRealRun', () => {
+  it.each([
+    ["GERÇEK denemede: kayıt formunda GÖRSEL captcha ('SecureImg') + reCAPTCHA var; sistem görsel captcha'yı çözmüyor → hesap açılmadı.", 'Görsel captcha (çözülmüyor)'],
+    ["GERÇEK denemede: kayıt formunda GÖRSEL (yazı) captcha var ('Enter the characters above') → 'Captcha failed', hesap açılmadı.", 'Görsel captcha (çözülmüyor)'],
+    ["GERÇEK denemede: kayıt formunda GÖRSEL (yazı) captcha var ('Type Image Values'); sistem bu tipi çözmüyor", 'Görsel captcha (çözülmüyor)'],
+    ["GERÇEK kayıtla: site yalnızca İŞ e-postası kabul ediyor ('Please use your work email address to register') — Gmail adresiyle kayıt YAPILAMAZ.", 'Yalnızca iş e-postası kabul ediyor'],
+    ['GERÇEK denemede: hCaptcha: 2captcha 180 sn içinde çözemedi, sonra insan bekledi → manual.', 'hCaptcha (otomatik çözüm güvenilmez)'],
+    ["GERÇEK denemede: kayıt formu, Cloudflare Turnstile ('Verify you are human') geçilmeden görünmüyor. Bot koruması duvarı.", 'Bot koruması duvarı'],
+    ["GERÇEK denemede: kayıt ÇOK ADIMLI (1 Hesap bilgileri → Next → 2 Konum/meslek); config yalnızca 1. adımı biliyor.", 'Çok adımlı kayıt formu'],
+    ["GERÇEK denemede: kayıt Google hesabıyla girişe yönleniyor; e-posta formu kullanılmıyor.", 'Yalnızca SSO ile kayıt'],
+    ["GERÇEK denemede: kayıt, Epic Games hesabı girişine yönleniyor (SSO); site kendi formunu kullanmıyor.", 'Yalnızca SSO ile kayıt'],
+    ["GERÇEK denemede: gönder adımı 'Sign in with Google' (OAuth) sayfasına götürdü; kayıt sosyal girişe dayanıyor olabilir.", 'Yalnızca SSO ile kayıt'],
+    ["GERÇEK denemede: Discourse forumu. E-posta doğrulandı AMA 'A moderator must manually approve your new account'", 'Moderatör onayı bekliyor'],
+    ["GERÇEK denemede: formda 'Please leave this field empty. It is for robots' bal tuzağı alanı var; hesap açılmamış görünüyor.", 'Bal tuzağı alanı (bot ayıklıyor)'],
+    ["GERÇEK denemede: kayıt adresi 404 döndürüyor ('Page Not Found'): signupUrl artık geçersiz", 'Kayıt adresi yanlış'],
+    ["GERÇEK denemede: signupUrl bir GİRİŞ sayfası (sign-in?next=/products/new); kayıt için 'Join' akışı ayrı incelenmeli", 'Kayıt adresi yanlış'],
+    ["GERÇEK denemede: kayıt gönderildi ve site 'We sent an activation mail' dedi ama 3 dk içinde posta kutusuna HİÇBİR mail düşmedi.", 'Doğrulama maili gelmiyor'],
+    ['GERÇEK denemede: kayıt sonrası kod ekranı çıktı ama doğrulama maili posta kutusuna hiç düşmedi.', 'Doğrulama maili gelmiyor'],
+    ["GERÇEK denemede: form şirket adı, ülke ve profil adı alanlarını ZORUNLU istiyor; config bunları bilmiyor → gönderilemedi.", 'Config\'in bilmediği zorunlu alan var'],
+    ["GERÇEK denemede: form gönderilince site kendi sunucu hatasını döndü ('Whoops, looks like something went wrong').", 'Site sunucu hatası'],
+    ['GERÇEK denemede: form gönderilince beklenen içerik görünmedi; hesabın açılıp açılmadığı BELİRSİZ.', 'Sonuç belirsiz (kayıt sonrası sayfa tanınmadı)'],
+    ["GERÇEK denemede: kayıt sayfası gönderimden sonra da formda kaldı; çok adımlı akış ya da gizli engel olabilir, hesap açılmadı görünüyor.", 'Sonuç belirsiz (kayıt sonrası sayfa tanınmadı)'],
+    ['GERÇEK denemede: tamamen başka bir şey oldu', 'Diğer (nota bak)'],
+  ])('%s → %s', (segment, sorun) => {
+    expect(classifyRealRun(`Önceki not. | 2026-10-10 ${segment}`)?.sorun).toBe(sorun);
+  });
+
+  it('notu kısaltır, "GERÇEK …:" önekini atar ve gerçek koşu notu yoksa null döner', () => {
+    const long = 'x'.repeat(400);
+    const r = classifyRealRun(`a | 2026-10-10 GERÇEK denemede: ${long}`);
+    expect(r?.not.length).toBeLessThanOrEqual(240);
+    expect(r?.not.startsWith('GERÇEK')).toBe(false);
+    expect(classifyRealRun('yalnızca dry-run notu')).toBeNull();
+  });
+});
+
+describe('annotate — hesap, listeleme, takılma, aile engeli', () => {
+  const cfg = (o: object = {}) => ({ unverified: false, awaitsMove: false, ...o });
+  const base = { hasAccount: false, config: null, verification: null, discovery: null };
+
+  it('geo.new gerçekten gönderilmiş siteyi "Gönderildi" yapar; görünürlük ve düzeltme uyarısı notta', () => {
+    const a = annotate({ ...base, hasAccount: true, config: cfg(), listing: { state: 'sent', url: 'https://x.example/tools/geo-new', date: '2026-10-12', caveat: 'Eski metinle gönderildi; düzeltme bekliyor' } });
+    expect(a.durum).toBe(DURUM.LISTED);
+    expect(a.not).toContain('https://x.example/tools/geo-new');
+    expect(a.not).toContain('2026-10-12');
+    expect(a.not).toMatch(/herkese açık.*doğrulanmadı/i);
+    expect(a.not).toContain('düzeltme bekliyor');
+  });
+
+  it('sonucu doğrulanamayan gönderim de ayrıca belirtilir (elle bakılacak)', () => {
+    const a = annotate({ ...base, hasAccount: true, config: cfg(), listing: { state: 'unconfirmed' } });
+    expect(a.durum).toBe(DURUM.LISTED);
+    expect(a.sorun).toMatch(/doğrulanamadı/i);
+  });
+
+  it('hesabı açık ve listeleme config\'i dry-run\'dan geçmiş site "listeleme hazır"; onay gerektiğini söyler', () => {
+    const a = annotate({ ...base, hasAccount: true, config: cfg(), listing: { state: 'ready' } });
+    expect(a.durum).toBe(DURUM.LISTING_READY);
+    expect(a.not).toMatch(/approve-profile/);
+    const held = annotate({ ...base, hasAccount: true, config: cfg(), listing: { state: 'ready', caveat: 'Bilinçli bekletiliyor: sahip karar verecek' } });
+    expect(held.not).toContain('Bilinçli bekletiliyor');
+  });
+
+  it('listeleme config\'i olmayan hesap "Hesap açık"; bilinen listeleme engeli Sorun\'a yazılır', () => {
+    const a = annotate({ ...base, hasAccount: true, config: cfg(), listing: { state: 'none', blocker: 'Listeleme: 2. adımda görsel doğrulama kodu', blockerNote: 'Alanları doldurulabilir ama kodu insan yazmalı' } });
+    expect(a).toMatchObject({ durum: DURUM.ACCOUNT, sorun: 'Listeleme: 2. adımda görsel doğrulama kodu' });
+    expect(a.not).toContain('insan yazmalı');
+  });
+
+  it('hesap notu (şifre kullanıcıda / doğrulanmamış) Not\'a eklenir', () => {
+    const a = annotate({ ...base, hasAccount: true, config: cfg(), accountNote: 'Şifre sistemde değil (kullanıcıda): otomatik giriş yapılamaz.' });
+    expect(a).toMatchObject({ durum: DURUM.ACCOUNT });
+    expect(a.not).toContain('kullanıcıda');
+  });
+
+  it('gerçek denemede kesin takılan site, engel sınıfını ve notu taşır (doğrulanmış ya da taslak fark etmez)', () => {
+    const note = "Doğrulandı (dry-run). | 2026-10-10 GERÇEK denemede: kayıt formunda GÖRSEL captcha ('SecureImg') var; sistem görsel captcha'yı çözmüyor → hesap açılmadı.";
+    for (const unverified of [false, true]) {
+      const a = annotate({ ...base, blocked: true, config: cfg({ unverified, notes: note }) });
+      expect(a).toMatchObject({ durum: DURUM.BLOCKED, sorun: 'Görsel captcha (çözülmüyor)' });
+      expect(a.not).toMatch(/görsel captcha/i);
+    }
+  });
+
+  it('takılan sitede gerçek koşu notu yoksa genel not kalır', () => {
+    const a = annotate({ ...base, blocked: true, config: cfg({ notes: 'yalnızca dry-run' }) });
+    expect(a.durum).toBe(DURUM.BLOCKED);
+    expect(a.sorun).toBe('');
+    expect(a.not).toMatch(/kesin başarısız/);
+  });
+
+  it('aynı kayıt motorunda engel doğrulanmış site denenmeden "Aile engeli" olur (Hazır değil)', () => {
+    const familyBlock = { sorun: 'Görsel captcha (aile)', sourceId: 'aboutyoublog' };
+    for (const unverified of [false, true]) {
+      const a = annotate({ ...base, config: cfg({ unverified }), familyBlock });
+      expect(a).toMatchObject({ durum: DURUM.FAMILY_BLOCK, sorun: 'Görsel captcha (aile)' });
+      expect(a.not).toContain('aboutyoublog');
+      expect(a.not).toMatch(/denenmedi|tahmin/i);
+    }
+  });
+
+  it('kontrol: aile engeli yoksa doğrulanmış config yine "Hazır"', () => {
+    expect(annotate({ ...base, config: cfg() }).durum).toBe(DURUM.READY);
+  });
+
+  it('öncelik: hesap açık > ToS/taşınma > kendi gerçek engeli > aile engeli', () => {
+    const familyBlock = { sorun: 'x', sourceId: 'y' };
+    expect(annotate({ ...base, hasAccount: true, config: cfg(), familyBlock }).durum).toBe(DURUM.ACCOUNT);
+    expect(annotate({ ...base, config: cfg({ risk: 'high' }), familyBlock }).durum).toBe(DURUM.TOS);
+    expect(annotate({ ...base, config: cfg({ awaitsMove: true }), familyBlock }).durum).toBe(DURUM.MOVED);
+    expect(annotate({ ...base, blocked: true, config: cfg({ notes: '| 2026-10-10 GERÇEK denemede: hCaptcha çözülemedi' }), familyBlock }).sorun).toMatch(/hCaptcha/);
   });
 });

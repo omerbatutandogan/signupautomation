@@ -8,8 +8,14 @@
 import { looksDynamicId } from './selectors.js';
 
 export const DURUM = {
+  /** geo.new bu sitenin kendi listeleme formundan gerçekten gönderildi (herkese açık olduğu ayrıca doğrulanır). */
+  LISTED: 'Gönderildi',
+  /** Hesap açık ve listeleme config'i dry-run'dan geçti: yalnızca insan onayı (approve-profile) bekliyor. */
+  LISTING_READY: 'Hesap açık: listeleme hazır',
   READY: 'Hazır',
   BLOCKED: 'Takıldı: elle bakılacak',
+  /** Aynı kayıt motorunu kullanan başka bir sitede gerçek denemede engel doğrulandı; bu site denenmedi (tahmin). */
+  FAMILY_BLOCK: 'Aile engeli: elle bakılacak',
   ACCOUNT: 'Hesap açık',
   DRAFT_FIX: 'Taslak: düzeltilecek',
   DRAFT_UNTESTED: 'Taslak: doğrulanmadı',
@@ -94,6 +100,56 @@ export function classifyFailure(note: string): Failure {
   return { sorun: 'Diğer', not: text.slice(0, 120) };
 }
 
+/** Notun SON "GERÇEK …" bölümü (tarih öneki atılmış); yoksa null. Bölümler " | " ile ayrılır. */
+export function realRunSegment(notes: string): string | null {
+  const parts = notes.split(/\s\|\s/);
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const part = parts[i] as string;
+    if (part.includes('GERÇEK')) return part.replace(/^\s*\d{4}-\d{2}-\d{2}\s*/, '').trim();
+  }
+  return null;
+}
+
+/**
+ * Gerçek koşunun config notuna bıraktığı engeli ("GERÇEK denemede: …") filtrelenebilir sınıfa çevirir.
+ * Sıra önemlidir: motor düzeyindeki kesin engeller (görsel captcha, iş e-postası…) belirsiz "sayfa tanınmadı"dan önce gelir.
+ */
+export function classifyRealRun(notes: string): Failure | null {
+  const segment = realRunSegment(notes);
+  if (!segment) return null;
+  const detail = segment.replace(/^GERÇEK[^:]*:\s*/, '');
+  const not = detail.length > 240 ? `${detail.slice(0, 237)}...` : detail;
+  const rules: Array<[RegExp, string]> = [
+    [/G[öÖ]RSEL[^.]{0,40}captcha|SecureImg|Type Image Values|characters above/i, 'Görsel captcha (çözülmüyor)'],
+    [/[iİ][sşŞ]\s+e-?postası|work email/i, 'Yalnızca iş e-postası kabul ediyor'],
+    [/hcaptcha/i, 'hCaptcha (otomatik çözüm güvenilmez)'],
+    [/Turnstile|Cloudflare|bot koruması duvarı/i, 'Bot koruması duvarı'],
+    [/ÇOK ADIMLI/, 'Çok adımlı kayıt formu'],
+    [/sosyal giriş|Google hesabıyla|Epic Games|\bSSO\b|\(OAuth\)/i, 'Yalnızca SSO ile kayıt'],
+    [/moderat/i, 'Moderatör onayı bekliyor'],
+    [/bal tuzağı|for robots/i, 'Bal tuzağı alanı (bot ayıklıyor)'],
+    [/G[İi]R[İi][ŞşSs] sayfası|giriş sayfasına|Page Not Found|404/i, 'Kayıt adresi yanlış'],
+    [/(mail|posta kutusuna)[^.]{0,80}(düşmedi|gelmedi|GÖNDERMİYOR)|HİÇBİR mail/i, 'Doğrulama maili gelmiyor'],
+    [/ZORUNLU istiyor/, "Config'in bilmediği zorunlu alan var"],
+    [/sunucu hatası|Whoops|something went wrong/i, 'Site sunucu hatası'],
+    [/BELİRSİZ|beklenen içerik görünmedi|formda kaldı|yerinde kaldı|sayfa değişm|elle bak|forma geri dönüyor/i, 'Sonuç belirsiz (kayıt sonrası sayfa tanınmadı)'],
+  ];
+  const hit = rules.find(([re]) => re.test(detail));
+  return { sorun: hit ? hit[1] : 'Diğer (nota bak)', not };
+}
+
+export interface ListingInfo {
+  /** sent: gerçek gönderim yapıldı · unconfirmed: yapılmış olabilir, doğrulanamadı · ready: dry-run geçti · none: listeleme config'i yok. */
+  state: 'sent' | 'unconfirmed' | 'ready' | 'none';
+  url?: string | null;
+  date?: string;
+  /** Gönderimle ilgili uyarı (ör. eski/yanlış metinle gönderildi, düzeltme bekliyor). */
+  caveat?: string;
+  /** Bilinen listeleme engeli (kısa, filtrelenebilir) ve ayrıntısı. */
+  blocker?: string;
+  blockerNote?: string;
+}
+
 export interface RowInput {
   /** Bu siteyle açılmış gerçek hesap var mı? */
   hasAccount: boolean;
@@ -102,12 +158,18 @@ export interface RowInput {
    * olmadan yeniden denemez (runner.ts → ledger.terminalResult), yani "hazır" değildir.
    */
   blocked?: boolean;
-  /** Config durumu; config yoksa null. */
-  config: { risk?: string; unverified: boolean; awaitsMove: boolean } | null;
+  /** Config durumu; config yoksa null. `notes` gerçek koşu bulgularını okumak için. */
+  config: { risk?: string; unverified: boolean; awaitsMove: boolean; notes?: string } | null;
   /** verify-drafts sonucu (varsa). */
   verification: { status: 'verified' | 'failed' | 'timeout'; note: string; captcha?: string; wall?: boolean; headed?: boolean } | null;
   /** Bu sekmedeki tarama sonucu (config yoksa belirleyici). */
   discovery: string | null;
+  /** geo.new'in bu sitedeki listeleme durumu (yoksa listeleme akışı hiç bilinmiyor). */
+  listing?: ListingInfo | null;
+  /** Hesapla ilgili ek bilgi (ör. şifre kullanıcıda, e-posta doğrulanmadı). */
+  accountNote?: string;
+  /** Aynı kayıt motorunda doğrulanmış engel (başka bir sitenin gerçek denemesinden çıkarım). */
+  familyBlock?: { sorun: string; sourceId: string } | null;
 }
 
 export interface Annotation {
@@ -117,15 +179,53 @@ export interface Annotation {
   sorun: string;
 }
 
+const join = (...parts: Array<string | null | undefined | false>): string => parts.filter((p): p is string => Boolean(p)).join(' ');
+
 export function annotate(input: RowInput): Annotation {
-  if (input.hasAccount) return { durum: DURUM.ACCOUNT, sorun: '', not: '' };
+  const listing = input.listing ?? null;
+
+  // Gerçekten gönderilmiş: her şeyin önünde. Görünürlük ayrıca doğrulanır (site onayı/sahiplik doğrulaması isteyebilir).
+  if (listing?.state === 'sent' || listing?.state === 'unconfirmed') {
+    const sent = listing.state === 'sent';
+    return {
+      durum: DURUM.LISTED,
+      sorun: sent ? '' : 'Sonucu doğrulanamadı (elle bak)',
+      not: join(
+        sent ? 'geo.new listeleme formundan gönderildi' : 'Gönderim yapılmış olabilir, başarı doğrulanamadı',
+        listing.date && `(${listing.date})`,
+        listing.url && `· ${listing.url}`,
+        '· herkese açık olduğu doğrulanmadı.',
+        listing.caveat && `${listing.caveat}.`,
+      ),
+    };
+  }
+
+  if (input.hasAccount) {
+    if (listing?.state === 'ready') {
+      return { durum: DURUM.LISTING_READY, sorun: '', not: join('Listeleme config\'i dry-run\'dan geçti; gönderim için önce approve-profile gerekir.', listing.caveat && `${listing.caveat}.`, input.accountNote) };
+    }
+    return { durum: DURUM.ACCOUNT, sorun: listing?.blocker ?? '', not: join(listing?.blockerNote, input.accountNote) };
+  }
 
   const cfg = input.config;
   if (cfg) {
     if (cfg.risk === 'high') return { durum: DURUM.TOS, sorun: '', not: 'Kullanım şartları otomatik erişimi yasaklıyor' };
     if (cfg.awaitsMove) return { durum: DURUM.MOVED, sorun: '', not: 'Site başka domaine taşınmış, doğru site mi diye onay bekliyor' };
-    if (!cfg.unverified && input.blocked) {
-      return { durum: DURUM.BLOCKED, sorun: '', not: 'Son gerçek deneme kesin başarısız bitti; işçi kendiliğinden yeniden denemez, config elle düzeltilmeli' };
+    if (input.blocked) {
+      // Gerçek denemede kesin takılmış: taslak ya da doğrulanmış olması fark etmez, gerçek bulgu dry-run'dan güçlüdür.
+      const real = classifyRealRun(cfg.notes ?? '');
+      return {
+        durum: DURUM.BLOCKED,
+        sorun: real?.sorun ?? '',
+        not: real?.not ?? 'Son gerçek deneme kesin başarısız bitti; işçi kendiliğinden yeniden denemez, config elle düzeltilmeli',
+      };
+    }
+    if (input.familyBlock) {
+      return {
+        durum: DURUM.FAMILY_BLOCK,
+        sorun: input.familyBlock.sorun,
+        not: `Aynı kayıt motoru: ${input.familyBlock.sourceId} sitesinde gerçek denemede takıldı. Bu site denenmedi; engel tahmin edilen (gerçek koşuda doğrulanmadı).`,
+      };
     }
     if (!cfg.unverified) {
       return { durum: DURUM.READY, sorun: '', not: input.verification?.captcha ? `Captcha: ${input.verification.captcha} (gerçek kayıtta çözülür)` : '' };
