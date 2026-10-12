@@ -167,7 +167,7 @@ Dosya: `src/submissions/<siteId>.json` ([src/adapters/submission-schema.ts](../s
 | `login` | – | `{ url, steps }`: giriş sayfası ve adımları. İlk adım genelde `{ "type": "goto", "url": "{{signupUrl}}" }`. `login.url`, `listingUrl` ile **aynı sayfa olamaz** |
 | `steps` | ✔ | Formu dolduran ve gönderen adımlar. **Gönder `click`'i son adım olmalı** |
 | `success` | ✔ | `anyOf` (görünür seçiciler) ve/veya `urlContains` (adres parçaları). En az biri şart |
-| `notes` | – | Neyin doğrulandığı, neyin **doğrulanmadığı**, görünürlük/silme bilgisi |
+| `notes` | – | Neyin doğrulandığı, neyin **doğrulanmadığı**, görünürlük/silme bilgisi. İki işaret Sheet'e yansır: `DÜZELTME GEREKİYOR` (yanlış metinle gönderildi) ve `BEKLETİLİYOR: <neden>` (gönderim bilinçli durduruldu) |
 
 **Şema kuralları (yükleme hatası olur):**
 - `login` varsa `loggedIn` zorunlu (yanlış şifre/engelli hesap giriş yapılmamış formu doldurmasın).

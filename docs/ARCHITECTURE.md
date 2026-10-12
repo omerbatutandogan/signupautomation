@@ -296,9 +296,12 @@ taranıp ezilmez (`discover-queue.ts` kuralları).
 
 ## 12. Sheet entegrasyonu
 
-`integrations/sheet.ts` (+ `discovery/annotate.ts`). Kaynak Sheet'in kendi kolonlarına (Durum, Not…) `run-batch`
-yazar; **otomasyon durumu** ise ayrı üç kolona yazılır: `Otomasyon Durumu`, `Otomasyon Sorunu`, `Otomasyon Notu`
-(`scripts/sheet-annotate.ts`). Sınıflar bilerek az ve kalıcıdır (`DURUM` sabitleri); ayrıntı Not kolonundadır.
+`integrations/sheet.ts` (+ `discovery/annotate.ts`, `discovery/annotate-sources.ts`). Kaynak Sheet'in kendi kolonlarına
+(Durum, Not…) `run-batch` yazar; **otomasyon durumu** ise ayrı üç kolona yazılır: `Otomasyon Durumu`, `Otomasyon Sorunu`,
+`Otomasyon Notu` (`scripts/sheet-annotate.ts`, `--all` ile 22 sekme). Sınıflar bilerek az ve kalıcıdır (`DURUM` sabitleri);
+ayrıntı Not kolonundadır. `annotate()` saf bir fonksiyondur; girdilerini (hesaplar, kesin takılmalar, listeleme durumu,
+aynı kayıt motorundan çıkarılan "aile engeli") `loadAnnotateSources` diskten ve ledger'dan toplar. "Hazır Siteler" özet
+sekmesi aynı sınıflandırıcıdan okunur: "hazır" tanımı tek yerdedir.
 Sheet hatası hiçbir zaman çalışmayı düşürmez.
 
 ## 13. Hata sınıflandırması ve durumlar
@@ -362,7 +365,7 @@ Hepsi git dışındadır (`.gitignore`).
 | `adapters/schema.ts`, `submission-schema.ts` | Config şemaları (zod) | Evet |
 | `adapters/generic.ts` | Adım yorumlayıcı (`runSteps`), onay kutusu/pazarlama kutusu mantığı | Hayır |
 | `adapters/registry.ts`, `submission-registry.ts` | Config yükleme (`overrides/` ayrılmış, boş) | Hayır |
-| `discovery/*` | Bulma, analiz, üretim, Sheet sınıflandırması (`annotate.ts` saf) | Karışık |
+| `discovery/*` | Bulma, analiz, üretim, Sheet sınıflandırması (`annotate.ts` saf) ve girdi toplama (`annotate-sources.ts`) | Karışık |
 | `identity/*` | Hesap anahtarı, şifre, e-posta, profil | Evet |
 | `integrations/ledger.ts` | SQLite | Hayır |
 | `integrations/gmail.ts`, `mail-parse.ts`, `mime.ts` | Posta: ağ/polling · ayrıştırma · MIME | `mail-parse`, `mime` saf |

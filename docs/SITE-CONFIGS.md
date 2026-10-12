@@ -229,7 +229,8 @@ Bir sitenin ToS'u captcha aşmayı yasaklıyor ya da belirsizse `"solveCaptcha":
 | `TAŞINMA ONAYI BEKLİYOR` | Keşif sitenin başka alan adına taşındığını gördü | **Hiçbir bayrakla** gerçek kayıt yapılmaz (dry-run serbest). Doğru site olduğunu insan onaylayıp damgayı elle siler; dry-run bu damgayı kaldırmaz |
 
 **Gerçek koşudan öğrendiklerinizi `notes`'a ekleyin.** Biçim: `| <yyyy-aa-gg> GERÇEK denemede: <ne oldu, neden>`. Sonraki kişi (ve Sheet raporu) neden takıldığını buradan okur;
-yalnızca olgu yazın ("görsel captcha var, çözülmüyor"), tahmin yazmayın.
+yalnızca olgu yazın ("görsel captcha var, çözülmüyor"), tahmin yazmayın. Sheet etiketlemesi **en son** `GERÇEK` bölümünü okuyup engeli sınıflar (görsel captcha, iş e-postası, hCaptcha, SSO…).
+Hesabı açık bir sitenin **listeleme formunda** bilinen bir engel varsa `| <tarih> LİSTELEME: <kısa sınıf> — <ayrıntı>` ekleyin (Sheet'te Sorun = `Listeleme: <kısa sınıf>`).
 
 ## 10. Config yazma rehberi
 

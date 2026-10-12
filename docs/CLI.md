@@ -205,7 +205,8 @@ Başarılı dry-run damgayı kaldırır; başarısız olanın nedeni ledger'a ya
 Sheet'in **bir sekmesine** üç kolon yazar: *Otomasyon Durumu*, *Otomasyon Sorunu*, *Otomasyon Notu* (yoksa başlık satırının sağına ekler; mevcut kolonlara dokunmaz).
 
 ```bash
-SHEET_TAB="SaaS" npx tsx scripts/sheet-annotate.ts [--dry-run]
+SHEET_TAB="SaaS" npx tsx scripts/sheet-annotate.ts [--dry-run]    # tek sekme
+npx tsx scripts/sheet-annotate.ts --all [--dry-run]              # tüm kaynak sekmeler (özet sekmesi hariç), sekmeler arası 3 sn bekler
 ```
 
 Kaynaklar: config'ler, `verify-drafts` sonucu, tarama dosyası ve ledger (açık hesaplar). `--dry-run` hiçbir şey yazmaz. Sınıflar: [OPERATIONS.md §6](OPERATIONS.md#6-sheet-güncelleme).

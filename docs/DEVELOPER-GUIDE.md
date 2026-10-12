@@ -206,7 +206,7 @@ yasal ad yok); detaylar [SECURITY-AND-POLICY.md](SECURITY-AND-POLICY.md#6-kimlik
 
 ### Yeni Sheet durum sınıfı
 
-`discovery/annotate.ts` (`DURUM` + `annotate()` saf) → `test/annotate.test.ts` → gerekirse `scripts/sheet-annotate.ts`'e girdi.
+`discovery/annotate.ts` (`DURUM` + `annotate()` saf) → `test/annotate.test.ts` → girdi gerekiyorsa `discovery/annotate-sources.ts` (+ `test/annotate-sources.test.ts`); betikler yalnızca bunları çağırır.
 Sınıfları az ve kalıcı tutun; ayrıntı "Not" kolonuna yazılır.
 
 ### Yeni ortam değişkeni

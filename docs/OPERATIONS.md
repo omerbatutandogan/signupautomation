@@ -164,7 +164,9 @@ Sheet **otorite değildir**; yalnızca insanın bakıp ilerlemeyi görmesi için
 
 ```bash
 SHEET_TAB="SaaS" npx tsx scripts/sheet-annotate.ts --dry-run    # ne yazacağını görün (hiçbir şey yazmaz)
-SHEET_TAB="SaaS" npx tsx scripts/sheet-annotate.ts              # yazar
+SHEET_TAB="SaaS" npx tsx scripts/sheet-annotate.ts              # tek sekmeyi yazar
+npx tsx scripts/sheet-annotate.ts --all --dry-run               # 22 sekmenin hepsi: özet + toplam
+npx tsx scripts/sheet-annotate.ts --all                         # hepsini yazar (sekmeler arası 3 sn bekler)
 ```
 
 Sekme adları **tam** yazılmalıdır; bazılarında sonda boşluk vardır (`"Deals "`, `"File Upload "`). 22 sekmenin adı `data/discovery-*.json` dosya adlarından okunabilir.
@@ -176,9 +178,12 @@ Sınıflar bilerek **az ve kalıcıdır**; ayrıntı "Not"/"Sorun" kolonlarında
 
 | Durum | Anlamı |
 |---|---|
-| **Hesap açık** | Bu siteyle açılmış gerçek hesap var |
+| **Gönderildi** | geo.new bu sitenin kendi listeleme formundan **gerçekten gönderildi**. Not: tarih, adres ve "herkese açık olduğu doğrulanmadı" uyarısı (yanlış metinle gönderildiyse "düzeltme bekliyor") |
+| **Hesap açık: listeleme hazır** | Hesap açık ve listeleme config'i dry-run'dan geçti; yalnızca insan onayı (`approve-profile`) bekliyor. Bilinçli bekletilenler Not'ta belirtilir |
+| **Hesap açık** | Bu siteyle açılmış gerçek hesap var; listeleme config'i yok. **Sorun** kolonu bilinen listeleme engelini verir (ör. "Listeleme: görsel doğrulama kodu (2. adım)"); Not'ta hesap uyarıları (şifre kullanıcıda, e-posta doğrulanmadı) |
 | **Hazır** | Doğrulanmış config; kayıt denenebilir (captcha türü notta) |
-| **Takıldı: elle bakılacak** | Doğrulanmış config ama son gerçek deneme kesin başarısız bitti; işçi kendiliğinden yeniden denemez |
+| **Takıldı: elle bakılacak** | Gerçek denemede kesin takıldı (taslak ya da doğrulanmış fark etmez); işçi kendiliğinden yeniden denemez. **Sorun** kolonu engeli sınıflar: görsel captcha, iş e-postası, hCaptcha, bot duvarı, çok adımlı form, SSO, moderatör onayı, doğrulama maili gelmiyor, yanlış kayıt adresi, bal tuzağı, sonuç belirsiz… |
+| **Aile engeli: elle bakılacak** | Aynı kayıt motorunu (aynı form alanı parmak izi) kullanan başka bir sitede **görsel captcha gerçek denemede doğrulandı**; bu site denenmedi, engel **tahmindir** ve Not'ta öyle yazar. "Hazır" sayılmaz |
 | **Taslak: düzeltilecek** | Dry-run başarısız; **Sorun** kolonu filtrelenebilir sınıfı verir (alan bulunamadı, zorunlu kutu, dinamik kimlik, sayfa açılmadı, …) |
 | **Taslak: doğrulanmadı** | Config üretildi, canlı dry-run henüz yapılmadı |
 | **Taşınma onayı bekliyor** | Site başka alan adına taşınmış; insan onaylayana kadar kayıt yok |
@@ -190,6 +195,17 @@ Sınıflar bilerek **az ve kalıcıdır**; ayrıntı "Not"/"Sorun" kolonlarında
 | **Tarama hatası** / **Taranmadı** | Keşif tamamlanamadı / henüz taranmadı |
 
 Yeni bir sınıf eklemek: `DURUM` + `annotate()` (saf) + `test/annotate.test.ts`; sınıfları çoğaltmak yerine ayrıntıyı Sorun/Not'a yazın.
+
+**Girdiler** ([src/discovery/annotate-sources.ts](../src/discovery/annotate-sources.ts)): config'ler ve notları, ledger (gerçek tamamlanmış/terminal denemeler, listelemeler), verify-drafts ve tarama dosyaları. Config notlarındaki işaretler Sheet'e şöyle yansır:
+
+| Not işareti | Nerede | Etkisi |
+|---|---|---|
+| `\| <tarih> GERÇEK denemede: …` | kayıt config'i | "Takıldı" sitelerinde Sorun sınıfı ve Not buradan çıkarılır (en SON `GERÇEK` bölümü okunur) |
+| `\| <tarih> LİSTELEME: <sınıf> — <ayrıntı>` | kayıt config'i | "Hesap açık" sitelerinde Sorun = `Listeleme: <sınıf>`, Not = ayrıntı |
+| `DÜZELTME GEREKİYOR` | listeleme config'i | "Gönderildi" Not'una "eski, yanlış metinle gönderildi — düzeltme bekliyor" uyarısı |
+| `BEKLETİLİYOR: <neden>` | listeleme config'i | "listeleme hazır" Not'una "bilinçli bekletiliyor: <neden>" uyarısı |
+
+**Aile çıkarımı** yalnızca motor düzeyindeki görsel captcha için yapılır (hCaptcha, SSO gibi siteye özgü engeller yayılmaz) ve kaynağın ledger'da **gerçekten takılmış** olmasını ister; form parmak izi en az 3 doldurulan alan ve en az bir motora özgü seçici içermelidir (`#email|#password` gibi jenerik ikililer aile belirtmez).
 
 ### 6.3 Sheet'i güncel tutma
 
