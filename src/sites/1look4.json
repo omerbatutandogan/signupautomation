@@ -70,5 +70,5 @@
     "mode": "link",
     "timeoutMs": 180000
   },
-  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: link-follow, 1 sıçrama, güven: high. Captcha: recaptcha_v2. Uyarılar: Captcha tespit edildi: recaptcha_v2"
+  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: link-follow, 1 sıçrama, güven: high. Captcha: recaptcha_v2. Uyarılar: Captcha tespit edildi: recaptcha_v2 | 2026-10-12 GERÇEK denemede: kayıttan sonra oturum AÇIK kaldı (kullanıcı adı + açılır menüde Logout); hesap açıldı. Bookmarking motoru ailesi (ondashboard, coolpot, justpep, mootin ...) aynı yapıdadır."
 }

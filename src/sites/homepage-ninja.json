@@ -70,5 +70,5 @@
     "mode": "link",
     "timeoutMs": 180000
   },
-  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi."
+  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: direct-path, 0 sıçrama, güven: high. Captcha görülmedi. | 2026-10-12 GERÇEK denemede: formda 'Please leave this field empty. It is for robots' bal tuzağı alanı var; kayıt sonrası durum belirsiz, hesap açılmamış görünüyor."
 }
