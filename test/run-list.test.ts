@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyStatus, gapSeconds, parseRunOneStatus, shouldStop, type ListOutcome } from '../src/core/run-list.js';
+import { classifyStatus, gapSeconds, isNetworkFailure, parseRunOneStatus, shouldStop, type ListOutcome } from '../src/core/run-list.js';
 
 describe('classifyStatus', () => {
   it('completed / skipped_* / geri kalan her şey failed', () => {
@@ -49,5 +49,17 @@ describe('parseRunOneStatus', () => {
   });
   it('durum satırı yoksa null', () => {
     expect(parseRunOneStatus('hata: bir şey patladı')).toBeNull();
+  });
+});
+
+describe('isNetworkFailure', () => {
+  it('bizim internetimizin kesilmesini tanır (siteyle ilgisi yok)', () => {
+    expect(isNetworkFailure('page.goto: net::ERR_INTERNET_DISCONNECTED at https://x.example/signup')).toBe(true);
+    expect(isNetworkFailure('page.goto: net::ERR_NETWORK_CHANGED at https://x.example')).toBe(true);
+  });
+  it('ölmüş alan adı, site hatası ve normal başarısızlık ağ kesintisi SAYILMAZ', () => {
+    expect(isNetworkFailure('page.goto: net::ERR_NAME_NOT_RESOLVED at https://oldu.example')).toBe(false);
+    expect(isNetworkFailure('Beklenen içerik görünmedi')).toBe(false);
+    expect(isNetworkFailure('page.goto: net::ERR_CONNECTION_REFUSED')).toBe(false);
   });
 });

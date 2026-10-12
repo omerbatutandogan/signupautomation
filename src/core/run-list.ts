@@ -16,6 +16,15 @@ export function classifyStatus(status: string): ListOutcome {
 }
 
 /**
+ * Çalıştırma, sitenin değil BİZİM internet bağlantımızın kesilmesiyle düştü mü? (Mac'in Wi-Fi'ı arada düşüyor.)
+ * Böyle bir sonuç siteyle ilgili hiçbir şey söylemez: başarısızlık sayılmaz, site listenin sonunda yeniden denenir.
+ * ERR_NAME_NOT_RESOLVED bilerek YOK: ölmüş bir sitenin alan adı da böyle görünür.
+ */
+export function isNetworkFailure(output: string): boolean {
+  return /ERR_INTERNET_DISCONNECTED|ERR_NETWORK_CHANGED/.test(output);
+}
+
+/**
  * Son `max` sonucun HEPSİ başarısızsa dur. Atlananlar (skipped) ne sayılır ne de seriyi böler.
  * Varsayılan 6: siteler birbirinden bağımsız ve her başarısızlık çoğunlukla farklı bir site sorunu (captcha,
  * iş e-postası şartı, çok adımlı form). 3'te durmak 12 sitelik bir turu 4. sitede kesiyordu; sistem çapında bir
