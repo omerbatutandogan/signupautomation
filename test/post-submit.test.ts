@@ -14,7 +14,7 @@ import type { SignupContext, SiteConfig, VerificationSpec } from '../src/core/ty
  */
 
 const facts = (over: Partial<Parameters<typeof decidePostSubmit>[0]> = {}) => ({
-  text: '', visiblePasswordInputs: 0, logoutVisible: false, digitBoxes: 0, singleCodeSelector: null, submitSelector: null, ...over,
+  text: '', visiblePasswordInputs: 0, logoutVisible: false, logoutAttached: false, identityInText: false, digitBoxes: 0, singleCodeSelector: null, submitSelector: null, ...over,
 });
 
 describe('decidePostSubmit (saf karar)', () => {
@@ -32,6 +32,13 @@ describe('decidePostSubmit (saf karar)', () => {
   });
   it('çıkış bağlantısı + parola alanı yok → logged_in (sideprojects)', () => {
     expect(decidePostSubmit(facts({ text: 'Launches Projects Submit project', logoutVisible: true }))).toEqual({ kind: 'logged_in' });
+  });
+  it('çıkış bağlantısı açılır menüde GİZLİ ama sayfa bu hesabın adını gösteriyorsa → logged_in (1look4)', () => {
+    expect(decidePostSubmit(facts({ text: 'geonew_1look4 Settings', logoutAttached: true, identityInText: true }))).toEqual({ kind: 'logged_in' });
+  });
+  it('gizli çıkış bağlantısı tek başına yetmez: hesabın adı sayfada yoksa → unknown', () => {
+    expect(decidePostSubmit(facts({ text: 'Home About', logoutAttached: true })).kind).toBe('unknown');
+    expect(decidePostSubmit(facts({ text: 'geonew_x', identityInText: true })).kind).toBe('unknown'); // ad var ama çıkış bağlantısı yok
   });
   it('çıkış bağlantısı olsa da parola alanı görünüyorsa oturum açık SAYILMAZ', () => {
     expect(decidePostSubmit(facts({ logoutVisible: true, visiblePasswordInputs: 1 })).kind).toBe('unknown');
@@ -88,6 +95,12 @@ describe('observePostSubmit + expect adımı (gerçek tarayıcı)', () => {
   const SPLIT = '<h1>Verify Account</h1><p>Please enter the authentication code</p>' + '<input maxlength="1" inputmode="numeric">'.repeat(6) + '<button>Submit</button>';
   const SINGLE = '<h1>Confirm your email</h1><p>We just sent an email with a 6-digit confirmation code.</p><input id="confirm-code" type="text"><button>Verify</button>';
   const FORM = '<h1>Join</h1><input type="email"><input type="password"><button>Create account</button>';
+
+  it('gizli (açılır menü) çıkış bağlantısı + hesabın kullanıcı adı → logged_in; ipucu verilmezse unknown', async () => {
+    await page.setContent('<nav><span>geonew_1look4</span><div class="dropdown-menu" style="display:none"><a href="/user/sign-in/logout">Sign out of account</a></div></nav><h1>Stories</h1>');
+    expect(await observePostSubmit(page, undefined, ['geonew_1look4'])).toEqual({ kind: 'logged_in' });
+    expect((await observePostSubmit(page)).kind).toBe('unknown');
+  }, 30_000);
 
   it('gerçek sayfalarda doğru durumu tanır', async () => {
     await page.setContent(LOGGED_IN);

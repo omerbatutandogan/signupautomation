@@ -28,6 +28,10 @@ interface PageFacts {
   text: string;
   visiblePasswordInputs: number;
   logoutVisible: boolean;
+  /** Çıkış bağlantısı DOM'da var ama gizli (açılır menü içinde olabilir). */
+  logoutAttached: boolean;
+  /** Sayfa metni bu hesabın kullanıcı adını / e-posta yerel kısmını içeriyor mu? */
+  identityInText: boolean;
   /** Tek hanelik (maxlength=1) görünür kutu sayısı. */
   digitBoxes: number;
   /** Tek bir kod alanı adayı: görünür metin kutusu, adı/yer tutucusu "code/otp/..." diyor. */
@@ -35,8 +39,8 @@ interface PageFacts {
   submitSelector: string | null;
 }
 
-async function collectFacts(page: Page): Promise<PageFacts> {
-  return page.evaluate((): PageFacts => {
+async function collectFacts(page: Page, hints: string[]): Promise<PageFacts> {
+  return page.evaluate((hintList: string[]): PageFacts => {
     const visible = (el: Element) => {
       const r = (el as HTMLElement).getBoundingClientRect();
       const style = getComputedStyle(el as HTMLElement);
@@ -59,6 +63,11 @@ async function collectFacts(page: Page): Promise<PageFacts> {
     const logoutVisible = Array.from(document.querySelectorAll('a, button')).some(
       (el) => visible(el) && /^(log ?out|sign ?out)$/i.test((el.textContent ?? '').trim()),
     ) || Array.from(document.querySelectorAll('a[href]')).some((a) => visible(a) && /(log-?out|sign-?out)/i.test(a.getAttribute('href') ?? ''));
+    const logoutAttached = Array.from(document.querySelectorAll('a[href], button, form[action]')).some(
+      (el) => /(log-?out|sign-?out)/i.test(el.getAttribute('href') ?? el.getAttribute('action') ?? '') || /^(log ?out|sign ?out)$/i.test((el.textContent ?? '').trim()),
+    );
+    const bodyText = (document.body?.innerText ?? '').toLowerCase();
+    const identityInText = hintList.some((h) => h.length >= 4 && bodyText.includes(h.toLowerCase()));
     const submit = Array.from(document.querySelectorAll('button, input[type=submit]')).find(
       (el) => visible(el) && /^(submit|verify|confirm|continue|next|activate)\b/i.test(((el as HTMLInputElement).value || el.textContent || '').trim()),
     );
@@ -67,11 +76,13 @@ async function collectFacts(page: Page): Promise<PageFacts> {
       text: (document.body?.innerText ?? '').replace(/\s+/g, ' ').slice(0, 4000),
       visiblePasswordInputs: inputs.filter((i) => i.type === 'password').length,
       logoutVisible,
+      logoutAttached,
+      identityInText,
       digitBoxes,
       singleCodeSelector,
       submitSelector: submitText ? `${submit!.tagName.toLowerCase() === 'input' ? 'input[type=submit]' : 'button'}:has-text("${submitText.replace(/"/g, '')}")` : null,
     };
-  });
+  }, hints);
 }
 
 /** Saf karar: ham sayfa bilgisinden durum. (Tarayıcısız test edilebilir.) */
@@ -84,16 +95,22 @@ export function decidePostSubmit(f: PageFacts): PostSubmit {
   if (codeText && f.singleCodeSelector) {
     return { kind: 'code_prompt', selector: f.singleCodeSelector, ...(f.submitSelector ? { submitSelector: f.submitSelector } : {}) };
   }
-  // 2) Oturum açık: çıkış bağlantısı görünüyor ve ortada parola alanı (hâlâ kayıt/giriş formu) yok.
-  if (f.logoutVisible && f.visiblePasswordInputs === 0) return { kind: 'logged_in' };
+  // 2) Oturum açık: çıkış bağlantısı görünüyor (ya da açılır menüde gizli ama sayfa BU hesabın kullanıcı adını/
+  //    e-postasını gösteriyor) ve ortada parola alanı (hâlâ kayıt/giriş formu) yok.
+  if ((f.logoutVisible || (f.logoutAttached && f.identityInText)) && f.visiblePasswordInputs === 0) return { kind: 'logged_in' };
   // 3) "Mailini kontrol et": yazı var ve form hâlâ ortada değil.
   if (CHECK_EMAIL_TEXT.test(f.text) && f.visiblePasswordInputs === 0) return { kind: 'check_email' };
   return { kind: 'unknown' };
 }
 
-export async function observePostSubmit(page: Page, log?: { warn(obj: object, msg: string): void }): Promise<PostSubmit> {
+export async function observePostSubmit(
+  page: Page,
+  log?: { warn(obj: object, msg: string): void },
+  /** Bu hesaba ait ayırt edici metinler (kullanıcı adı, e-posta yerel kısmı): gizli çıkış bağlantısını doğrulamak için. */
+  identityHints: string[] = [],
+): Promise<PostSubmit> {
   try {
-    return decidePostSubmit(await collectFacts(page));
+    return decidePostSubmit(await collectFacts(page, identityHints));
   } catch (err) {
     // Sayfa gezindi/kapandı ya da sayfa içi kod çalışmadı: kanıt yok. Sessiz yutma teşhisi zorlaştırıyordu.
     log?.warn({ err: (err as Error).message.split('\n')[0] }, 'Kayıt sonrası durum tespit edilemedi');
