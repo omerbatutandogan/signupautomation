@@ -18,9 +18,10 @@
     { "type": "fill", "selector": "#title", "field": "companyName" },
     { "type": "fill", "selector": "#tagline", "field": "tagline" },
     { "type": "fill", "selector": "#description", "field": "description" },
-    { "type": "check", "selector": "input[name='categories'][value='developer-tools']" },
+    { "type": "check", "selector": "input[name='categories'][value='ai']" },
+    { "type": "check", "selector": "input[name='categories'][value='marketing']" },
     { "type": "click", "selector": "button:has-text('Submit for launch')" }
   ],
   "success": { "urlContains": ["/projects/geo"] },
-  "notes": "Form 2026-10-12'de gerçek oturumla incelendi (sideprojects.net/projects/submit, tek adım). Alanlar kimlikle seçilir. Kategori: yalnızca 'Developer tools' (en çok 3 seçilebilir). Ücretsiz gönderim 'review queue' (inceleme kuyruğu): hemen yayınlanmaz. Tarih seçimi ve görsel/video alanları atlandı (ücretli 'skip the line' seçeneğine DOKUNULMAZ). BAŞARI İŞARETİ DOĞRULANMADI (gönderilmedi): proje sayfası adresinin /projects/geo… olması varsayıldı; tutmazsa canlı çalışma 'unconfirmed' kalır. Not: 'review queue' yazısı form sayfasında zaten var, bu yüzden metin işareti olarak kullanılmadı."
+  "notes": "Form 2026-10-12'de gerçek oturumla incelendi (sideprojects.net/projects/submit, tek adım). Alanlar kimlikle seçilir. Kategori: 'AI' ve 'Marketing' (en çok 3 seçilebilir; ürün bir AI-arama/GEO denetim aracı — 12 Ekim'de düzeltildi, önceki 'Developer tools' seçimi ürünü yanlış tanımlayan eski profile dayanıyordu). Ücretsiz gönderim 'review queue' (inceleme kuyruğu): hemen yayınlanmaz. Tarih seçimi ve görsel/video alanları atlandı (ücretli 'skip the line' seçeneğine DOKUNULMAZ). BAŞARI İŞARETİ DOĞRULANMADI (gönderilmedi): proje sayfası adresinin /projects/geo… olması varsayıldı; tutmazsa canlı çalışma 'unconfirmed' kalır. Not: 'review queue' yazısı form sayfasında zaten var, bu yüzden metin işareti olarak kullanılmadı."
 }

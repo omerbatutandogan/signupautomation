@@ -1,22 +1,25 @@
 {
   "companyName": "geo.new",
   "website": "https://geo.new",
-  "tagline": "Instant geolocation data for any address",
+  "tagline": "Free GEO audit for AI search",
   "descriptions": {
-    "short": "Instant geolocation and address data through a simple API.",
-    "medium": "geo.new turns any address into structured geolocation data with a single API call. Fast, accurate, and built for developers.",
-    "long": "geo.new is a developer-first geolocation API that turns any address into structured, accurate location data with a single request. It handles address parsing, normalization, geocoding and reverse geocoding, returning clean JSON you can use immediately. Built for teams who need dependable location data without wrestling with inconsistent formats or complicated setup. Integration takes minutes and the response shape stays stable."
+    "short": "Free GEO audit: see what AI search reads on your page and what to fix first.",
+    "medium": "An AI-native GEO audit for AI search. See what ChatGPT, Perplexity and AI Overviews read on your page, and exactly what to fix first. Free, no signup.",
+    "long": "GEO.new is a free, AI-native audit of one public page: what AI search and agents can read on it, what they cannot, and what to fix next. It runs 176 checks and scores the page on AI citability, content and E-E-A-T, AI access and rendering, schema and structured data, brand and entity, and platform readiness, with evidence under every row and fixes ordered by measured severity and effort. No signup needed: enter a page URL and run the audit."
   },
   "category": {
-    "primary": "Developer Tools",
+    "primary": "SEO",
     "aliases": [
-      "API",
-      "Developer Tools",
+      "SEO Tools",
+      "SEO",
+      "AI Tools",
+      "AI",
+      "Marketing",
+      "Analytics",
+      "Tools",
       "SaaS",
-      "Data",
-      "Geolocation",
-      "Productivity",
       "Software",
+      "Productivity",
       "Other"
     ]
   },
@@ -30,6 +33,6 @@
     "email": "johnkevinsmith0@gmail.com"
   },
   "socials": {},
-  "pricing": "freemium",
-  "foundedYear": 2026
+  "pricing": "free",
+  "foundedYear": 2022
 }

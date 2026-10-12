@@ -54,7 +54,7 @@
     {
       "type": "select",
       "selector": "select:has-text('Choose a category')",
-      "value": "Coding & Development"
+      "field": "category"
     },
     {
       "type": "select",
@@ -72,5 +72,5 @@
       "text=/tool (has been )?(published|submitted|added)/i"
     ]
   },
-  "notes": "Form 2026-10-10'da gerçek oturumla incelendi (toolsnocode.com/tools/new, 'Publish Tool'). Alanlar yer tutucu metinle seçilir (name/id yok). Kategori sabit 'Coding & Development' (geo.new bir geliştirici API'si) — ürün sahibi onaylamalı. Logo/ekran görüntüsü alanları atlandı (logo dosyaları henüz yok). BAŞARI İŞARETİ DOĞRULANMADI (gönderilmedi): tutmazsa canlı çalışma 'unconfirmed' kalır. Not: 'Publish Tool' aracı HEMEN herkese açık yayınlıyor olabilir. | 2026-10-12 İLK GERÇEK GÖNDERİM: başarı işareti göründü ve araç oluştu (https://toolsnocode.com/tools/geo-new, yalnızca sahibe görünür). Giriş yapmadan sayfa 404: herkese açık olması site onayı/sahiplik doğrulamasına bağlı olabilir. Sahip panelinde 'Edit' (Save Changes) var; silme/yayından kaldırma YOK. Gerçek listeleme adresi gönderimden sonra /tools/<ad>."
+  "notes": "Form 2026-10-10'da gerçek oturumla incelendi (toolsnocode.com/tools/new, 'Publish Tool'). Alanlar yer tutucu metinle seçilir (name/id yok). Kategori profilden gelir (field:category → 'SEO'; sitede 'SEO', 'Marketing', 'Data & Analytics' var). Logo/ekran görüntüsü alanları atlandı (logo dosyaları henüz yok). BAŞARI İŞARETİ DOĞRULANMADI (gönderilmedi): tutmazsa canlı çalışma 'unconfirmed' kalır. Not: 'Publish Tool' aracı HEMEN herkese açık yayınlıyor olabilir. | 2026-10-12 İLK GERÇEK GÖNDERİM: başarı işareti göründü ve araç oluştu (https://toolsnocode.com/tools/geo-new, yalnızca sahibe görünür). Giriş yapmadan sayfa 404: herkese açık olması site onayı/sahiplik doğrulamasına bağlı olabilir. Sahip panelinde 'Edit' (Save Changes) var; silme/yayından kaldırma YOK. Gerçek listeleme adresi gönderimden sonra /tools/<ad>. | 2026-10-12 DÜZELTME GEREKİYOR: bu gönderim, ürünü yanlış anlatan ESKİ profille yapıldı (slogan/açıklama 'geolokasyon API'si', kategori 'Coding & Development'). geo.new aslında AI aramasında sayfayı denetleyen ücretsiz bir GEO audit aracı. Sahip panelindeki 'Edit' ile doğru metin ve 'SEO' kategorisi girilmeli (yeni profil onaylandıktan sonra). Listeleme herkese açık değil ('Verify ownership' bekliyor), yani yanlış metin şu an yayında görünmüyor."
 }
