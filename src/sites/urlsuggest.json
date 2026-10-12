@@ -70,5 +70,5 @@
     "mode": "link",
     "timeoutMs": 180000
   },
-  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: link-follow, 1 sıçrama, güven: high. Captcha görülmedi."
+  "notes": "Doğrulandı (dry-run, 06.10.2026) Keşif: link-follow, 1 sıçrama, güven: high. Captcha görülmedi. | 2026-10-13 LİSTELEME: görsel doğrulama kodu (2. adım) — gönderim 2 adımlı: 1. adımda yalnızca adres (geo.new), 2. adımda başlık, kategori, açıklama ve GÖRSEL doğrulama kodu (Story[verifyCode]) isteniyor; kodu bir insanın yazması gerekir (sistem görsel captcha çözmez). 1. adım gerçek gönderimle denendi: site başlık ve açıklamayı geo.new'in kendi sayfasından okudu, ürün yayınlanmadı."
 }
