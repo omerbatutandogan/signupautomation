@@ -17,8 +17,26 @@ function safe(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 60) || 'artifact';
 }
 
-export function createArtifacts(page: Page, runId: string, siteId: string): Artifacts {
-  const dir = `${ARTIFACT_ROOT}/${runId}/${siteId}`;
+/**
+ * Sayfanın HTML'i, parola alanlarının değeri BOŞALTILMIŞ olarak.
+ *
+ * React gibi çerçeveler yazılan değeri `value` özniteliğine yansıtır ve serileştirme öznitelikleri yazar:
+ * ham `page.content()` türetilmiş şifreyi diske düz metin kaydederdi. Hata sonrası akış sürebileceği için
+ * canlı sayfaya dokunulmaz; kopya üzerinde çalışılır (kopya `outerHTML`'i öznitelikleri okur, özelliği değil).
+ */
+async function contentWithoutPasswords(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const clone = document.documentElement.cloneNode(true) as HTMLElement;
+    for (const input of Array.from(clone.querySelectorAll('input[type="password"]'))) {
+      input.setAttribute('value', '');
+    }
+    const doctype = document.doctype ? `<!DOCTYPE ${document.doctype.name}>\n` : '';
+    return `${doctype}${clone.outerHTML}`;
+  });
+}
+
+export function createArtifacts(page: Page, runId: string, siteId: string, root: string = ARTIFACT_ROOT): Artifacts {
+  const dir = `${root}/${runId}/${siteId}`;
   let ensured = false;
 
   const ensureDir = async (): Promise<void> => {
@@ -42,7 +60,7 @@ export function createArtifacts(page: Page, runId: string, siteId: string): Arti
       await ensureDir();
       const path = `${dir}/${safe(name)}.html`;
       try {
-        await writeFile(path, await page.content());
+        await writeFile(path, await contentWithoutPasswords(page));
       } catch {
         /* yoksay */
       }
