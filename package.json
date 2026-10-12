@@ -18,10 +18,12 @@
     "mail:recent": "node --experimental-strip-types scripts/fetch-recent.ts",
     "mail:verify-corpus": "tsx scripts/verify-eml-corpus.ts",
     "inspect": "tsx scripts/inspect-form.ts",
-    "sheet:import": "tsx scripts/import-sheet.ts",
-    "record": "tsx scripts/record.ts",
     "discover": "tsx scripts/discover.ts",
-    "verify-drafts": "tsx scripts/verify-drafts.ts"
+    "verify-drafts": "tsx scripts/verify-drafts.ts",
+    "run-list": "tsx scripts/run-list.ts",
+    "sheet:annotate": "tsx scripts/sheet-annotate.ts",
+    "sheet:ready-tab": "tsx scripts/sheet-ready-tab.ts",
+    "eval-signup": "tsx scripts/eval-signup.ts"
   },
   "dependencies": {
     "@googleapis/gmail": "^22.0.0",
