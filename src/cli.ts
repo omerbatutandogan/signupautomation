@@ -420,16 +420,23 @@ async function cmdSubmit(siteId: string, flags: Set<string>, productId: string):
 
 async function cmdApproveProfile(productId: string): Promise<number> {
   const { reviewAndApprove } = await import('./core/approval-prompt.js');
+  const { fetchSiteFacts } = await import('./core/site-facts.js');
   const profile = await loadProfile(productId);
   const interactive = Boolean(process.stdin.isTTY);
   const { createInterface } = await import('node:readline/promises');
   const rl = interactive ? createInterface({ input: process.stdin, output: process.stdout }) : null;
   try {
-    const result = await reviewAndApprove(productId, profile, {
-      isTTY: interactive,
-      print: (line) => console.log(line),
-      ask: (question) => (rl ? rl.question(question) : Promise.resolve('')),
-    });
+    const result = await reviewAndApprove(
+      productId,
+      profile,
+      {
+        isTTY: interactive,
+        print: (line) => console.log(line),
+        ask: (question) => (rl ? rl.question(question) : Promise.resolve('')),
+      },
+      // Ürünün KENDİ sitesi profille yan yana gösterilir: yanlış tanımlanmış ürün onaydan geçmesin.
+      { siteFacts: () => fetchSiteFacts(profile.website) },
+    );
     return result.approved ? 0 : 1;
   } finally {
     rl?.close();

@@ -2,8 +2,9 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { reviewAndApprove, type ApprovalIO } from '../src/core/approval-prompt.js';
+import { DIVERGENCE_PHRASE, reviewAndApprove, type ApprovalIO } from '../src/core/approval-prompt.js';
 import { assetFingerprints, listingApproval } from '../src/core/listing-approval.js';
+import type { SiteFacts } from '../src/core/site-facts.js';
 import { loadProfile } from '../src/identity/profile.js';
 
 /**
@@ -108,5 +109,112 @@ describe('reviewAndApprove', () => {
     const t = io();
     await reviewAndApprove('geo-new', profile, t.api, { dir, assetsDir });
     expect(t.out()).toMatch(/logo-256\.png.*DOSYA YOK/);
+  });
+});
+
+
+/**
+ * Onay ekranı, ürünün KENDİ sitesinin anlatımını profille yan yana gösterir. Gerçek vaka: geo.new'in profili
+ * adından tahminle "geolokasyon API'si" diye yazılmıştı, site ise "ücretsiz GEO audit aracı" diyordu; insan
+ * onayı bile bunu yakalamadı çünkü ekran yalnızca profilin kendi metnini gösteriyordu.
+ */
+describe('reviewAndApprove — ürünün kendi sitesiyle karşılaştırma', () => {
+  const SITE: SiteFacts = {
+    url: 'https://geo.new/',
+    title: 'GEO.new — Free GEO Audit for AI Search',
+    description: 'An AI-native GEO audit for AI search. See what ChatGPT, Perplexity and AI Overviews read on your page, and exactly what to fix first. Free, no signup.',
+    headline: 'Free GEO audit: see your page the way AI search does.',
+  };
+  const wrongProfile = (profile: Awaited<ReturnType<typeof loadProfile>>) => ({
+    ...profile,
+    tagline: 'Instant geolocation data for any address',
+    descriptions: {
+      short: 'Instant geolocation and address data through a simple API.',
+      medium: 'geo.new turns any address into structured geolocation data with a single API call. Fast, accurate, and built for developers.',
+      long: 'geo.new is a developer-first geolocation API that turns any address into structured, accurate location data with a single request.',
+    },
+  });
+
+  it('uyumlu profilde sitenin kendi metnini gösterir, uyarmaz ve normal kodla onaylanır', async () => {
+    const { dir, assetsDir, profile } = await setup();
+    const t = io({ answer: (q) => codeIn(q) });
+    const result = await reviewAndApprove('geo-new', profile, t.api, { dir, assetsDir, siteFacts: async () => SITE });
+    expect(result.approved).toBe(true);
+    expect(t.out()).toContain(SITE.title);
+    expect(t.out()).toContain(SITE.description);
+    expect(t.out()).toContain('uyumlu');
+    expect(t.out()).not.toContain('UYARI');
+    expect(t.questions[0]).not.toContain(DIVERGENCE_PHRASE);
+  });
+
+  it('profil sitenin anlatımından FARKLIYSA uyarır ve onay kodu TEK BAŞINA yetmez', async () => {
+    const { dir, assetsDir, profile } = await setup();
+    const wrong = wrongProfile(profile);
+    const t = io({ answer: (q) => codeIn(q) }); // insan alışkanlıkla ekrandaki kodu yazıyor
+    const result = await reviewAndApprove('geo-new', wrong, t.api, { dir, assetsDir, siteFacts: async () => SITE });
+
+    expect(result).toEqual({ approved: false, reason: 'declined' });
+    expect(await readdir(dir)).toEqual([]); // hiçbir onay yazılmadı
+    expect(t.out()).toContain('UYARI');
+    expect(t.out()).toContain(SITE.title); // sitenin kendi metni yan yana
+    expect(t.out()).toContain('Instant geolocation data for any address'); // ve profilin kendi metni
+    expect(t.questions[0]).toContain(DIVERGENCE_PHRASE);
+  });
+
+  it('farkı gördüğünü bilinçli ifadeyle onaylayan insanın onayı kaydedilir', async () => {
+    const { dir, assetsDir, profile } = await setup();
+    const wrong = wrongProfile(profile);
+    const t = io({ answer: () => ` ${DIVERGENCE_PHRASE} ` });
+    const result = await reviewAndApprove('geo-new', wrong, t.api, { dir, assetsDir, siteFacts: async () => SITE });
+    expect(result.approved).toBe(true);
+    expect(await readdir(dir)).toEqual(['geo-new.json']);
+  });
+
+  it('kontrol: uyumlu profilde "FARKLI ONAYLIYORUM" geçerli değildir (yalnızca kod)', async () => {
+    const { dir, assetsDir, profile } = await setup();
+    const t = io({ answer: () => DIVERGENCE_PHRASE });
+    const result = await reviewAndApprove('geo-new', profile, t.api, { dir, assetsDir, siteFacts: async () => SITE });
+    expect(result).toEqual({ approved: false, reason: 'declined' });
+    expect(await readdir(dir)).toEqual([]);
+  });
+
+  it('site okunamazsa engellemez ama elle karşılaştırmayı hatırlatır (kod yeter)', async () => {
+    const { dir, assetsDir, profile } = await setup();
+    for (const siteFacts of [async () => null, async () => { throw new Error('ağ yok'); }, async () => ({ url: 'u', title: null, description: null, headline: null })]) {
+      const t = io({ answer: (q) => codeIn(q) });
+      const result = await reviewAndApprove('geo-new', profile, t.api, { dir, assetsDir, siteFacts });
+      expect(result.approved).toBe(true);
+      expect(t.out()).toContain('ELLE karşılaştırın');
+      expect(t.questions[0]).not.toContain(DIVERGENCE_PHRASE);
+      await rm(join(dir, 'geo-new.json'));
+    }
+  });
+
+  it('site çok az metin veriyorsa ceza yok: karşılaştırılamaz', async () => {
+    const { dir, assetsDir, profile } = await setup();
+    const t = io({ answer: (q) => codeIn(q) });
+    const result = await reviewAndApprove('geo-new', wrongProfile(profile), t.api, {
+      dir,
+      assetsDir,
+      siteFacts: async () => ({ url: 'u', title: 'Home', description: null, headline: null }),
+    });
+    expect(result.approved).toBe(true);
+    expect(t.out()).toContain('ELLE karşılaştırın');
+  });
+
+  it('etkileşimli terminal yoksa farklı profilde de soru sorulmaz ve onay yazılmaz', async () => {
+    const { dir, assetsDir, profile } = await setup();
+    const t = io({ isTTY: false, answer: () => DIVERGENCE_PHRASE });
+    const result = await reviewAndApprove('geo-new', wrongProfile(profile), t.api, { dir, assetsDir, siteFacts: async () => SITE });
+    expect(result).toEqual({ approved: false, reason: 'not_interactive' });
+    expect(t.questions).toEqual([]);
+    expect(await readdir(dir)).toEqual([]);
+  });
+
+  it('siteFacts verilmezse karşılaştırma yapılmaz (ağa çıkılmaz) ve davranış eskisi gibidir', async () => {
+    const { dir, assetsDir, profile } = await setup();
+    const t = io({ answer: (q) => codeIn(q) });
+    expect((await reviewAndApprove('geo-new', wrongProfile(profile), t.api, { dir, assetsDir })).approved).toBe(true);
+    expect(t.out()).not.toContain('KENDİ sitesi');
   });
 });
