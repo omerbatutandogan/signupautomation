@@ -10,7 +10,6 @@ const nonEmpty = z.string().trim().min(1);
 
 export const ProfileSchema = z.object({
   companyName: nonEmpty,
-  legalName: nonEmpty,
   website: z.string().url(),
   tagline: nonEmpty,
   descriptions: z.object({
@@ -26,7 +25,8 @@ export const ProfileSchema = z.object({
   contact: z.object({
     firstName: nonEmpty,
     lastName: nonEmpty,
-    role: nonEmpty,
+    /** İsteğe bağlı: yoksa formdaki unvan alanı boş bırakılır (uydurma unvan yayınlanmaz). */
+    role: nonEmpty.optional(),
     email: z.string().email(),
   }),
   socials: z.object({

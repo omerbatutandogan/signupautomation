@@ -22,7 +22,6 @@ function scratch(): string {
 
 const validProfile = {
   companyName: 'Acme CRM',
-  legalName: 'Acme Inc.',
   website: 'https://acme.example',
   tagline: 'CRM for everyone',
   descriptions: { short: 'short', medium: 'medium', long: 'long' },

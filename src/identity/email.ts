@@ -1,10 +1,10 @@
 /**
  * Tek sabit e-posta adresi — TÜM sitelere aynı adresle kaydolunuyor.
  *
- * Bilinçli tercih: kurumsal domain (noderan.com) yerine kullanılmayan
- * bireysel bir Gmail hesabı kullanılıyor; kurulum daha basit (DNS/Workspace
- * admin erişimi gerekmiyor, sade OAuth yeterli) ve kurumsal domain'in spam
- * itibarı hiç risk altına girmiyor.
+ * Bilinçli tercih: kurumsal bir alan adı yerine kullanılmayan bireysel bir Gmail
+ * hesabı kullanılıyor; kurulum daha basit (DNS/Workspace admin erişimi
+ * gerekmiyor, sade OAuth yeterli) ve kurumsal alan adının spam itibarı hiç risk
+ * altına girmiyor.
  *
  * Sonuç: mail eşleştirmesi artık `to:` adresine göre değil, `from:<site
  * domain>` + zaman penceresine göre yapılıyor (integrations/gmail.ts).

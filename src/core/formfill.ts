@@ -76,7 +76,7 @@ export function resolveField(
     case 'fullName':
       return `${profile.contact.firstName} ${profile.contact.lastName}`.trim();
     case 'role':
-      return profile.contact.role;
+      return profile.contact.role ?? null;
     case 'contactEmail':
       return profile.contact.email;
     case 'twitter':

@@ -45,7 +45,6 @@ export const TERMINAL_STATUSES: readonly Status[] = [
 
 export interface SignupProfile {
   companyName: string;
-  legalName: string;
   website: string;
   /** ~45 karakter — maxlength çok darsa açıklama yerine bu kullanılır. */
   tagline: string;
@@ -59,7 +58,7 @@ export interface SignupProfile {
   contact: {
     firstName: string;
     lastName: string;
-    role: string;
+    role?: string;
     email: string;
   };
   socials: Partial<Record<'twitter' | 'linkedin' | 'github', string>>;
