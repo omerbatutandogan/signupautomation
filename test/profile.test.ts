@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
+import { resolveField } from '../src/core/formfill.js';
 import { listProducts, loadProfile, parseProfile } from '../src/identity/profile.js';
 
 /**
@@ -26,6 +27,31 @@ describe('loadProfile', () => {
 
   it('listProducts profilleri bulur', async () => {
     expect(await listProducts()).toContain('geo-new');
+  });
+});
+
+describe('iletişim unvanı ve yasal ad', () => {
+  it('geo-new profilinde uydurma unvan ve yasal ad YOK', async () => {
+    const raw = await baseProfile();
+    expect(raw).not.toHaveProperty('legalName');
+    expect(raw.contact).not.toHaveProperty('role');
+  });
+
+  it('unvan (role) isteğe bağlıdır: yoksa profil yüklenir', async () => {
+    const raw = await baseProfile();
+    const { role: _removed, ...contact } = raw.contact as Record<string, unknown>;
+    expect(() => parseProfile({ ...raw, contact }, 'acme')).not.toThrow();
+  });
+
+  it('formdaki "role" alanı için değer yoksa null döner (alan boş bırakılır, uydurma unvan yazılmaz)', async () => {
+    const profile = await loadProfile('geo-new');
+    expect(resolveField('role', profile, { email: 'x@example.com', username: 'x', password: 'p', passwordVersion: 1 })).toBeNull();
+  });
+
+  it('unvan verilirse formda kullanılır', async () => {
+    const raw = await baseProfile();
+    const profile = parseProfile({ ...raw, contact: { ...(raw.contact as object), role: 'Developer' } }, 'acme');
+    expect(resolveField('role', profile, { email: 'x@example.com', username: 'x', password: 'p', passwordVersion: 1 })).toBe('Developer');
   });
 });
 

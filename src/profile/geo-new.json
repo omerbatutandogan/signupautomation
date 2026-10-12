@@ -1,6 +1,5 @@
 {
   "companyName": "geo.new",
-  "legalName": "Noderan",
   "website": "https://geo.new",
   "tagline": "Instant geolocation data for any address",
   "descriptions": {
@@ -10,7 +9,16 @@
   },
   "category": {
     "primary": "Developer Tools",
-    "aliases": ["API", "Developer Tools", "SaaS", "Data", "Geolocation", "Productivity", "Software", "Other"]
+    "aliases": [
+      "API",
+      "Developer Tools",
+      "SaaS",
+      "Data",
+      "Geolocation",
+      "Productivity",
+      "Software",
+      "Other"
+    ]
   },
   "logo": {
     "512": "assets/logo-512.png",
@@ -19,7 +27,6 @@
   "contact": {
     "firstName": "John",
     "lastName": "Smith",
-    "role": "Founder",
     "email": "johnkevinsmith0@gmail.com"
   },
   "socials": {},

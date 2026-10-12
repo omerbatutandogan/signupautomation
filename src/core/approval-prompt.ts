@@ -32,14 +32,13 @@ export async function reviewAndApprove(
 
   io.print(`\n${productId} — herkese açık yayınlanabilecek TÜM bilgiler:\n`);
   io.print(`  Ürün adı      : ${profile.companyName}`);
-  io.print(`  Şirket/yasal  : ${profile.legalName}`);
   io.print(`  Site          : ${profile.website}`);
   io.print(`  Slogan        : ${profile.tagline}`);
   io.print(`  Kısa açıklama : ${profile.descriptions.short}`);
   io.print(`  Orta açıklama : ${profile.descriptions.medium}`);
   io.print(`  Uzun açıklama : ${profile.descriptions.long}`);
   io.print(`  Kategori      : ${profile.category.primary} (diğer: ${profile.category.aliases.join(', ')})`);
-  io.print(`  İletişim      : ${profile.contact.firstName} ${profile.contact.lastName}, ${profile.contact.role}, ${profile.contact.email}`);
+  io.print(`  İletişim      : ${[`${profile.contact.firstName} ${profile.contact.lastName}`, profile.contact.role, profile.contact.email].filter(Boolean).join(', ')}`);
   io.print(`  Fiyat         : ${profile.pricing} · Kuruluş: ${profile.foundedYear}`);
   io.print(`  Sosyal        : ${JSON.stringify(profile.socials)}`);
   for (const [path, sha] of Object.entries(assets)) {

@@ -88,7 +88,6 @@ describe('reviewAndApprove', () => {
     const out = t.out();
     for (const text of [
       profile.companyName,
-      profile.legalName,
       profile.website,
       profile.tagline,
       profile.descriptions.short,
