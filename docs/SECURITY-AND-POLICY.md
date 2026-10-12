@@ -98,6 +98,7 @@ Projenin hedefi **meşru bir ürünü, kullanım şartlarına uyan sitelerde, ke
 
 Sitelere yazılan her şey **gerçek ve doğrulanmış** olmalıdır; üçüncü sitelerde yanlış bir iddia yayınlamak geri alınması zor bir zarardır.
 
+- **Ürünün ne yaptığı adından TAHMİN EDİLMEZ; ürünün kendi sitesiyle doğrulanır.** Gerçek vaka: geo.new'in profili "geolokasyon API'si" diye yazılmıştı, site ise kendini "AI aramasında sayfayı denetleyen ücretsiz GEO audit aracı" olarak tanıtıyor; hata 3 haftadan uzun fark edilmedi, insan onayından geçti ve gerçek bir listelemeye yayıldı. Profil metni sitenin başlığı/meta açıklaması/ana başlığından alınır; `approve-profile` bu metinleri profille yan yana gösterir ve farklıysa ek bilinçli onay ister. Yayınlanmış yanlış bir kayıt bulunursa düzeltme için önce profil yeniden onaylanır, sonra ilgili kayıt sahibin düzenleme ekranından düzeltilir.
 - **Ürün bilgisi yalnızca ürün sahibinin verdiği olgulardır.** Ürün profili (`src/profile/<ürün>.json`) şemayla doğrulanır; **uydurma unvan, yasal şirket adı, kuruluş hikâyesi, yorum/puan yazılmaz.**
   İletişim kişisinin unvanı (`role`) **isteğe bağlıdır**: profilde yoksa formdaki unvan alanı **boş bırakılır**; "Founder/CEO" gibi bir değer tahmin edilmez.
 - **Operatörün kimliği/şirketi yayınlanmaz.** Projeyi çalıştıran kişi ya da kuruluşun adı, hesap e-postasının alan adından **çıkarılıp** profile, sayfaya, config'e ya da örnek dosyaya yazılmaz.

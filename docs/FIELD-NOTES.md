@@ -107,6 +107,7 @@ Her biri gerçek bir vakadan; düzeltmesi kodda ya da config rehberinde (bkz. [S
 - **"Dry-run geçti = hazır"** varsayımı: kayıt sonrası davranış ve başarı sayfası yalnızca gerçek koşuda ortaya çıkar.
 - **Tek kelimelik `expect` desenleri** (yukarıda).
 - **`captchaGate`'i alanlardan öne almak** (yukarıda, `betalist`'te yanlış teşhis).
+- **Ürünü adından tahmin etmek:** geo.new'in profili "geolokasyon API'si" diye yazılmıştı (ad "geo"dan çıkarılmış); site ise kendini "AI aramasında sayfayı denetleyen ücretsiz GEO audit aracı" olarak tanıtıyor. Hata 3 haftadan uzun fark edilmedi, insan onayından geçti ve 1 gerçek listelemeye, 1 toplist kaydına ve 1 forum profiline yayıldı; ancak bir yer imi sitesi geo.new'in gerçek başlığını kendisi okuyup getirince ortaya çıktı. Ders: ürün bilgisi ürünün kendi sitesinden alınır ve onay ekranında yan yana gösterilir (`core/site-facts.ts`).
 - **Hesabı sistemden önce açılmış siteler:** türetilen şifre geçmez (`betalist`); bu hesaplar "şifre kullanıcıda" olarak işaretlenir ve otomatik girişe/listelemeye dahil edilmez.
 - **Başarı işaretini formun kendi metninden seçmek** (listeleme): "review queue" yazısı form sayfasında zaten vardı.
 

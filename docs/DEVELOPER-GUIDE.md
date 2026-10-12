@@ -198,6 +198,7 @@ Gerçek bir saha vakasından (`artifacts/.../failure-*.html`) tanımayı doğrul
 `src/profile/<ürün-id>.json` (id: küçük harf/rakam/tire). `npm run cli -- products` zod hatalarını gösterir. Aynı sitede iki
 ürün aynı e-postayla hesap açamaz: ikinci ürüne `signupEmail` verin. Profilde **yalnızca verilen bilgi** bulunur (uydurma unvan,
 yasal ad yok); detaylar [SECURITY-AND-POLICY.md](SECURITY-AND-POLICY.md#6-kimlik-ve-içerik-politikası).
+**Metni ürünün kendi sitesinden alın** (başlık, meta açıklama, ana başlık): ürünün ne yaptığını adından tahmin etmeyin. `npm run cli -- approve-profile <ürün>` siteyi okuyup profille yan yana gösterir.
 
 ### Yeni listeleme config'i
 
@@ -304,4 +305,5 @@ Her biri gerçek bir olaydan gelir; yeni kod yazarken aynı yere düşmeyin.
 | `Promise.race` ile kaybeden taraf sonradan reddedilirse işlenmemiş red olur | Her taraf `.then(ok, fail)` ile sarılır |
 | Test boşuna geçti (korumayı kaldırınca da geçiyordu) | Mutasyon kontrolü; "önce başarı, sonra değişiklik, sonra ret" biçiminde test |
 | `package.json`'da var olmayan betiklere giden script'ler | Betik ekler/silerken `package.json`'u güncelleyin |
+| Ürünün ne yaptığını adından çıkarıp profile yazmak (geo.new "geolokasyon API'si" sanıldı; gerçekte AI-arama denetim aracı) — 3 hafta fark edilmedi ve insan onayından geçti | Metni ürünün kendi sitesinden alın; `approve-profile` siteyi okuyup profille yan yana gösterir ve farklıysa ek onay ister |
 | Terminal sonuçlar yeniden denemeyi engeller: yanlış `failed` yazan bir koşu hesabı "kilitler" | Hesap gerçekten açıksa `adopt-account` (kanıt notuyla); açılmadığı kesinse `--force` |

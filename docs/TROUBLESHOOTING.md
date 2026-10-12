@@ -103,6 +103,8 @@
 | Giriş sonrası tıklamalar çalışmıyor (karşılama penceresi) | Pencere tıklamaları kapıyor | `waitFor` + `dismiss` ekleyin (10words'te yaşandı) |
 | `unconfirmed` | Gönderim yapılmış **olabilir**, başarı işareti görünmedi ya da gönderimden sonra hata | Hesaba girip ürünün oluşup oluşmadığına **elle bakın**. Oluşmuşsa `--force` ile **tekrar göndermeyin**; yoksa nedeni bulup `--force` |
 | `completed` ama ürün anonim ziyaretçiye görünmüyor | Site moderasyon/sahiplik onayı istiyor ya da yalnızca sahibe gösteriyor | Normal olabilir: giriş yapmadan listeleme adresini açıp doğrulayın, sonucu `notes`'a yazın ([LISTINGS.md §6](LISTINGS.md#6-gönderimden-sonra)) |
+| `approve-profile`: "UYARI: Profil, sitenin kendi anlatımından FARKLI görünüyor" | Profil metni ürünün kendi sitesindeki başlık/açıklamayla örtüşmüyor (yanlış ürün tanımı olabilir) | Ekrandaki iki metni yan yana okuyun; profil yanlışsa `src/profile/<ürün>.json`'u sitenin kendi sözleriyle düzeltin. Bilerek farklıysa kod yerine `FARKLI ONAYLIYORUM` yazın |
+| Yayınlanmış bir kayıtta yanlış ürün bilgisi bulundu | Eski/yanlış profille gönderilmiş (listeleme, toplist kaydı, forum profil alanı) | Önce profili düzeltip `approve-profile` ile yeniden onaylayın; sonra ilgili kaydı sahibin düzenleme ekranından (ör. toolsnocode "Edit") düzeltin. Silme çoğu sitede yoktur |
 | `skipped_done` / `skipped_unverified` | Daha önce gönderilmiş (ya da belirsiz) | Elle kontrol; bilinçli yeniden gönderim için `--force` |
 | `skipped_daily_limit` | Bugünkü gerçek gönderim sınırı doldu | Yarın (`--force` aşmaz) |
 

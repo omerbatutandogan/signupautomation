@@ -105,6 +105,9 @@ Ayrıntılı model: [LISTINGS.md](LISTINGS.md).
 Yayınlanacak **tüm** bilgiyi (ad, site, slogan, üç açıklama, kategori, iletişim, fiyat, sosyal, logo dosyalarının SHA-256'sı) ekrana basar ve
 ekrandaki 8 haneli kodu yazmanızı ister. Etkileşimli terminal (TTY) şarttır; boru/betik içinden çalışmaz, böylece `approve-profile && submit --live`
 zinciri kararı insan yerine veremez. Onay `data/approvals/<ürün>.json`'a yazılır; profil ya da logo bir bayt değişirse geçersiz olur.
+Ekranda ayrıca **ürünün kendi sitesinin** başlığı, meta açıklaması ve ana başlığı (`GET <profil.website>`) profille **yan yana** gösterilir ve iki metnin ortak sözcük oranı hesaplanır.
+Oran %30'un altındaysa (profil sitenin kendi anlatımından farklı görünüyor) uyarı çıkar ve onay kodu **yetmez**: kodun yerine tam olarak `FARKLI ONAYLIYORUM` yazılmalıdır.
+Site okunamıyorsa engellenmez; ekranda "elle karşılaştırın" uyarısı çıkar.
 Çıkış kodu: onaylandıysa 0.
 
 > Bu komutu otomasyonun/yardımcı bir aracın çalıştırması beklenmez: yayın kararı sizindir.

@@ -37,6 +37,7 @@ Gerçek gönderim için hepsi gerekir; biri eksikse sistem **ağa çıkmadan** d
 3. **Açık hesap:** o ürün + site için ledger'da `completed` kayıt ve kimlik bilgisi (`run-one` ile açılmış ya da `adopt-account` ile benimsenmiş).
    Hesabın notunda "şifre kullanıcıda" yazıyorsa (hesap sistemden önce vardı, türetilen şifre geçmez) otomatik giriş yapılamaz → `manual`.
 4. **Ürün profili:** `src/profile/<ürün>.json` (zod ile doğrulanır). Yayınlanacak her şey buradan gelir: ad, site, slogan, kısa/orta/uzun açıklama, kategori, iletişim, fiyat, kuruluş yılı, sosyal bağlantılar, logo yolları.
+   **Metin ürünün kendi sitesinden alınır** (başlık, meta açıklama, ana başlık); ürünün ne yaptığı adından tahmin edilmez. `approve-profile` bu karşılaştırmayı ekranda yapar ([§2](#2-onay-modeli)).
 5. **Logo dosyaları** (profilde `logo` yolu varsa): `src/profile/<yol>` altında bulunmalı. Dosya yoksa onay kaydına "yok" olarak girer; sonradan eklemek profilin içeriğini değiştirmiş sayılır ve **yeniden onay** ister.
 6. **Onay:** profil + logo dosyaları için geçerli bir `approve-profile` kaydı ([§2](#2-onay-modeli)).
 
@@ -54,6 +55,7 @@ ve ekrandaki **8 haneli kodu** yazmanızı ister. Kod, o içeriğin parmak izind
 | Kural | Neden |
 |---|---|
 | **Etkileşimli terminal (TTY) şart** | Bir betik ya da otomasyon `approve-profile && submit --live` zinciriyle kararı insan yerine veremez |
+| Ürünün **kendi sitesiyle karşılaştırma** | Ekranda sitenin başlığı/açıklaması profille yan yana gösterilir; ortak sözcük oranı %30'un altındaysa uyarı çıkar ve kod yetmez, `FARKLI ONAYLIYORUM` yazılmalıdır. Gerçek vaka: geo.new yanlışlıkla "geolokasyon API'si" diye tanımlanmıştı (site "ücretsiz GEO audit aracı" diyor); insan onayı bile bunu yakalayamamıştı çünkü ekran yalnızca profilin kendi metnini gösteriyordu |
 | Onay **içeriğe bağlıdır** | Profildeki tek bir karakter ya da logo dosyasının tek bir baytı değişirse onay geçersiz olur (`changed`); sistem `skipped_not_approved` döner |
 | Onay **makineye özeldir** | `data/approvals/<ürün>.json` (git'e girmez): bir insanın o makinede verdiği karar repo'ya işlenmez |
 | Kaydın biçimi | `{ "sha256": "…", "approvedAt": "<ISO tarih>" }`; bozuk dosya `unreadable` sayılır (gönderim yapılmaz) |
@@ -186,8 +188,10 @@ Dosya: `src/submissions/<siteId>.json` ([src/adapters/submission-schema.ts](../s
 
 | Site | Durum (2026-10-12) | Notlar |
 |---|---|---|
-| `toolsnocode` | **Gerçek gönderim yapıldı** (`/tools/geo-new`), site kabul etti | Sahip hesabında görünüyor ve düzenlenebilir ("Edit"); **silme/yayından kaldırma yok**. Giriş yapmadan sayfa 404 → herkese açık olması site onayına/sahiplik doğrulamasına bağlı görünüyor; **henüz herkese açık doğrulanmadı** |
+| `toolsnocode` | **Gerçek gönderim yapıldı** (`/tools/geo-new`), site kabul etti — **ESKİ, yanlış profil metniyle** | Sahip hesabında görünüyor ve düzenlenebilir ("Edit"); **silme/yayından kaldırma yok**. Giriş yapmadan sayfa 404 ve "Verify ownership" bekliyor → yanlış metin şu an herkese açık değil. **Düzeltme bekliyor:** yeni profil onaylandıktan sonra "Edit" ile doğru metin ve `SEO` kategorisi girilecek |
 | `sideprojects` | Dry-run geçti, **gönderilmedi** | Yalnızca "Developer tools" kategorisi; ücretsiz gönderim inceleme kuyruğuna girer; ücretli "skip the line"a dokunulmaz. Başarı işareti (`urlContains: /projects/geo`) **doğrulanmadı** |
 | `10words` | Dry-run geçti, **gönderilmedi — bilinçli olarak bekletiliyor** | Gönderim sonrası ödeme/sponsor yönlendirmesi çıkabilir; site bülten/sosyal medya tanıtımı yapıyor olabilir ve silme imkânı belirsiz. Karar netleşmeden gerçek gönderim yapılmaz. Başarı işareti **doğrulanmadı** |
+
+Üç config'in kategori seçimleri ürünün doğru tanımına göre güncellendi (toolsnocode `SEO`, sideprojects `AI` + `Marketing`, 10words `SaaS`).
 
 Bu tablo tarihlidir; güncel durum için `npm run cli -- status` ve ilgili config'in `notes` alanına bakın.

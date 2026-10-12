@@ -142,7 +142,7 @@ npm run verify-drafts -- --only a,b,c                      # ya da --limit N: to
 
 Listeleme **herkese açık yayındır**; ayrıntılı model [LISTINGS.md](LISTINGS.md)'dedir. Her gerçek gönderimden önce:
 
-- [ ] Ürün bilgisi **doğru** ve ürün sahibince teyitli (yanlış/doğrulanmamış bilgi yayınlanmaz).
+- [ ] Ürün bilgisi **doğru** ve ürün sahibince teyitli (yanlış/doğrulanmamış bilgi yayınlanmaz); `approve-profile` ekranında ürünün **kendi sitesinin** anlatımı profille uyumlu görünüyor.
 - [ ] `submit <site>` (dry-run) temiz: `completed (dry-run — gönderilmedi)`, uyarısız; ekran görüntüsünde alanlar doğru.
 - [ ] Sitede **silme/düzenleme** imkânı ve gönderimin **hemen yayınlanıp yayınlanmadığı** araştırıldı; kaldırılamayan ve tanıtım/bülten tetikleyen sitelerde karar ürün sahibinde.
 - [ ] `approve-profile <ürün>` ekranındaki bilgileri **kendi gözünüzle** okudunuz ve kodu siz yazdınız (insan adımı).

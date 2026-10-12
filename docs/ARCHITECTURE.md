@@ -348,7 +348,8 @@ Hepsi git dışındadır (`.gitignore`).
 | `core/runner.ts` | Hesap açma durum makinesi | Hayır |
 | `core/submitter.ts` | Listeleme durum makinesi | Hayır |
 | `core/listing-approval.ts` | Onay özeti (profil + logo baytları), kayıt/okuma | Kısmen |
-| `core/approval-prompt.ts` | `approve-profile` insan adımı (TTY + yazılı kod) | G/Ç enjekte edilir |
+| `core/approval-prompt.ts` | `approve-profile` insan adımı (TTY + yazılı kod; profil ürünün kendi sitesinden farklıysa ek onay ifadesi) | G/Ç enjekte edilir |
+| `core/site-facts.ts` | Ürünün KENDİ sitesinin başlık/açıklama/ana başlığını okur ve profille sözcük örtüşmesini ölçer | `extractSiteFacts`/`siteOverlap` saf; `fetchSiteFacts` tek GET |
 | `core/post-submit.ts` | Kayıt sonrası durum tanıma (`decidePostSubmit` saf) | Karar saf |
 | `core/verification-entry.ts` | Kod girişi (tek/çok kutu) | Hayır |
 | `core/browser.ts` | Playwright context, kalıcı/geçici profil, `__name` yardımcısı | Hayır |
