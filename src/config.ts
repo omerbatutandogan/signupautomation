@@ -50,8 +50,9 @@ const EnvSchema = z.object({
   CAPTCHA_TIMEOUT_MS: intish(900_000),
   LOCK_TTL_MS: intish(2_700_000),
 
-  // 2captcha — site bazında opt-in. Boşsa çözücü devre dışı.
-  // ToS riski: yalnızca config'inde solveCaptcha:true olan sitede çalışır.
+  // 2captcha. Boşsa çözücü devre dışı ve captcha'lar insana düşer. Doluysa risk:"high" olmayan
+  // ve solveCaptcha:false yazılmamış sitelerde, yalnızca gerçek kayıtta (dry-run ve listeleme
+  // hariç) kullanılır.
   CAPTCHA_API_KEY: z.string().default(''),
 
   LOG_LEVEL: z.string().default('info'),

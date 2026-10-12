@@ -165,9 +165,15 @@ export const SiteConfigSchema = z
         allowedSymbols: z.string().optional(),
       })
       .optional(),
-    /** Varsayılan kapalı — yalnızca trivial navigator.webdriver kontrolü yapan siteler. */
+    /**
+     * UYGULANMADI: şemada kabul edilir ama hiçbir kod okumaz (bot korumasını gizlenerek aşma
+     * projenin politikası değil). Config'e yazmayın.
+     */
     stealth: z.boolean().optional(),
-    /** 2captcha ile otomatik çözüm. Varsayılan kapalı — ToS riski. */
+    /**
+     * 2captcha ile otomatik çözüm. Yazılmazsa AÇIK (risk:"high" hariç); kapatmak için açıkça
+     * `false` yazılır — ToS'u captcha aşmayı yasaklayan ya da okunamayan siteler için.
+     */
     solveCaptcha: z.boolean().optional(),
     notes: z.string().optional(),
   })

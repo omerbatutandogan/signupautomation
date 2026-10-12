@@ -238,12 +238,12 @@ export interface SiteConfig {
     noSymbols?: boolean;
     allowedSymbols?: string;
   };
-  /** Varsayılan kapalı. Yalnızca trivial navigator.webdriver kontrolü yapan siteler için. */
+  /** UYGULANMADI: şema kabul eder, hiçbir kod okumaz (bkz. adapters/schema.ts). */
   stealth?: boolean;
   /**
-   * 2captcha ile otomatik captcha çözümü. VARSAYILAN KAPALI.
-   * Bazı dizinlerin ToS'u captcha bypass'ını yasaklıyor; her açma
-   * bilinçli bir karar olmalı. risk:"high" sitelerde zaten çalışmaz.
+   * 2captcha ile otomatik captcha çözümü. Yazılmazsa AÇIK (risk:"high" sitelerde asla çalışmaz);
+   * `false` açıkça kapatır. Bazı dizinlerin ToS'u captcha bypass'ını yasaklıyor: onları
+   * risk:"high" ya da `solveCaptcha:false` ile işaretleyin.
    */
   solveCaptcha?: boolean;
   notes?: string;

@@ -1,13 +1,18 @@
 /**
- * 2captcha entegrasyonu — SİTE BAZINDA OPT-IN.
+ * 2captcha entegrasyonu.
  *
- * ÖNEMLİ SINIR: Yalnızca config'inde "solveCaptcha": true olan sitelerde
- * devreye girer. Varsayılan KAPALI çünkü bazı dizinlerin kullanım şartları
- * CAPTCHA bypass'ını açıkça yasaklıyor (G2, Capterra vb.) ve hesabın
- * askıya alınması kalıcı listing kaybı demek.
+ * Çözücü, `CAPTCHA_API_KEY` doluysa ve site için izin varsa devreye girer
+ * (karar `shouldSolveCaptcha`, adapters/generic.ts): risk:"high" olmayan her
+ * sitede VARSAYILAN AÇIK; config'te `"solveCaptcha": false` yazılırsa kapalı.
+ * Bazı dizinlerin kullanım şartları CAPTCHA bypass'ını açıkça yasaklıyor
+ * (G2, Capterra vb.) ve hesabın askıya alınması kalıcı listing kaybı demek;
+ * bu siteler risk:"high" ile işaretlenir ve runner'ın risk kapısında ağ
+ * isteği yapılmadan reddedilir — orada asla çalışmaz. Listelemede
+ * (submitter.ts) tercih sitenin kayıt config'inden miras alınır; kayıt
+ * config'i yoksa kapalıdır.
  *
- * Yüksek riskli siteler (risk: "high") zaten ağ isteği yapılmadan
- * reddediliyor (runner.ts risk kapısı) — orada asla çalışmaz.
+ * Dry-run'da çözülmez (ücretli ve gönderimi zaten korumuyor). Yalnızca
+ * reCAPTCHA v2/v3, hCaptcha ve Turnstile desteklenir; görsel captcha yoktur.
  */
 
 import type { Page } from 'playwright';
