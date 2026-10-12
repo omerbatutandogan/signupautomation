@@ -1,83 +1,81 @@
 /**
- * Sheet'in bir sekmesine "Otomasyon Durumu / Sorunu / Notu" kolonlarını yazar.
+ * Sheet'e "Otomasyon Durumu / Sorunu / Notu" kolonlarını yazar.
  *
- *   SHEET_TAB="SaaS" npx tsx scripts/sheet-annotate.ts [--dry-run]
+ *   SHEET_TAB="SaaS" npx tsx scripts/sheet-annotate.ts [--dry-run]   # tek sekme
+ *   npx tsx scripts/sheet-annotate.ts --all [--dry-run]              # tüm kaynak sekmeler
  *
  * Yalnızca bu üç kolona yazar (yoksa başlık satırının sağına ekler); mevcut
  * kolonlara (Durum, Not, ...) dokunmaz. Kaynaklar: config'ler, verify-drafts
- * sonucu, tarama dosyası, ledger (hesaplar). --dry-run hiçbir şey yazmaz.
+ * sonucu, tarama dosyası, ledger (hesaplar, gerçek denemeler, listelemeler).
+ * Sınıflar ve girdiler: src/discovery/annotate.ts, annotate-sources.ts.
+ * --dry-run hiçbir şey yazmaz; yazım tekrar çalıştırılabilir (aynı girdi aynı çıktı).
  */
 
-import { readFileSync, readdirSync } from 'node:fs';
-import Database from 'better-sqlite3';
+import { setTimeout as sleep } from 'node:timers/promises';
 import pino from 'pino';
 import { env } from '../src/config.js';
 import { SheetClient } from '../src/integrations/sheet.js';
-import { isUnverified } from '../src/discovery/generate-config.js';
-import { awaitsMoveApproval } from '../src/core/markers.js';
-import { annotate, type RowInput } from '../src/discovery/annotate.js';
+import { annotate, READY_TAB } from '../src/discovery/annotate.js';
+import { defaultPaths, loadAnnotateSources, rowInputFor } from '../src/discovery/annotate-sources.js';
 
 const HEADERS = ['Otomasyon Durumu', 'Otomasyon Sorunu', 'Otomasyon Notu'];
 const dryRun = process.argv.includes('--dry-run');
+const all = process.argv.includes('--all');
 
-function readJson<T>(path: string, fallback: T): T {
-  try {
-    return JSON.parse(readFileSync(path, 'utf8')) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-async function main(): Promise<number> {
-  const log = pino({ level: 'warn' });
+/** Bir sekmeyi etiketler; sekmede site adresi kolonu yoksa (özet sekmesi gibi) null döner. */
+async function annotateTab(tab: string, log: pino.Logger): Promise<Map<string, number> | null> {
+  env.SHEET_TAB = tab; // SheetClient.create sekmeyi env'den okur
   const sheet = await SheetClient.create(log);
-  if (!sheet) {
-    console.error('Sheet bağlanamadı (token süresi dolmuş olabilir: npm run gmail:auth)');
-    return 1;
-  }
-
-  // Config durumları
-  const configs = new Map<string, NonNullable<RowInput['config']>>();
-  for (const file of readdirSync('src/sites').filter((f) => f.endsWith('.json'))) {
-    const cfg = readJson<{ risk?: string; notes?: string }>(`src/sites/${file}`, {});
-    configs.set(file.slice(0, -5), { risk: cfg.risk, unverified: isUnverified(cfg), awaitsMove: awaitsMoveApproval(cfg) });
-  }
-  const verification = readJson<Record<string, NonNullable<RowInput['verification']>>>('data/verify-drafts/progress.json', {});
-  const discovery = readJson<{ entries?: Record<string, { outcome?: string }> }>(`data/discovery-${env.SHEET_TAB}.json`, {}).entries ?? {};
-
-  // Gerçek hesabı olanlar: dry-run olmayan tamamlanmış deneme (varsayılan ürün: anahtar = siteId).
-  const db = new Database('data/ledger.sqlite', { readonly: true, fileMustExist: true });
-  const withAccount = new Set(
-    (db.prepare("SELECT DISTINCT site_id FROM attempts WHERE status = 'completed' AND dry_run = 0 AND site_id NOT LIKE '%@%'").all() as Array<{ site_id: string }>).map((r) => r.site_id),
-  );
-  const blockedIds = new Set(
-    (db.prepare("SELECT DISTINCT site_id FROM attempts WHERE terminal = 1 AND dry_run = 0 AND site_id NOT LIKE '%@%'").all() as Array<{ site_id: string }>)
-      .map((r) => r.site_id)
-      .filter((id) => !withAccount.has(id)),
-  );
-  db.close();
+  if (!sheet) throw new Error(`Sheet bağlanamadı: ${tab} (token süresi dolmuş olabilir: npm run gmail:auth)`);
 
   const rows = await sheet.readAll();
+  if (rows.length === 0) return null;
+
+  const sources = loadAnnotateSources(defaultPaths(tab));
   const counts = new Map<string, number>();
   const out = rows.map((row) => {
-    const a = annotate({
-      hasAccount: withAccount.has(row.siteId),
-      blocked: blockedIds.has(row.siteId),
-      config: configs.get(row.siteId) ?? null,
-      verification: verification[row.siteId] ?? null,
-      discovery: discovery[row.siteId]?.outcome ?? null,
-    });
+    const a = annotate(rowInputFor(row.siteId, sources));
     counts.set(a.durum, (counts.get(a.durum) ?? 0) + 1);
     return { rowNumber: row.rowNumber, values: [a.durum, a.sorun, a.not] };
   });
 
   const summary = [...counts].sort((x, y) => y[1] - x[1]).map(([k, n]) => `${n} ${k}`).join(' · ');
   if (dryRun) {
-    console.log(`[${env.SHEET_TAB}] ${rows.length} satır (yazılmadı): ${summary}`);
-    return 0;
+    console.log(`[${tab}] ${rows.length} satır (yazılmadı): ${summary}`);
+    return counts;
   }
   const res = await sheet.writeAnnotations(HEADERS, out);
-  console.log(`[${env.SHEET_TAB}] ${res.written} satır yazıldı${res.addedHeaders.length ? ` (yeni kolon: ${res.addedHeaders.join(', ')})` : ''}: ${summary}`);
+  console.log(`[${tab}] ${res.written} satır yazıldı${res.addedHeaders.length ? ` (yeni kolon: ${res.addedHeaders.join(', ')})` : ''}: ${summary}`);
+  return counts;
+}
+
+async function main(): Promise<number> {
+  const log = pino({ level: 'warn' });
+
+  if (!all) {
+    await annotateTab(env.SHEET_TAB, log);
+    return 0;
+  }
+
+  const probe = await SheetClient.create(log);
+  if (!probe) {
+    console.error('Sheet bağlanamadı (token süresi dolmuş olabilir: npm run gmail:auth)');
+    return 1;
+  }
+  const total = new Map<string, number>();
+  let tabs = 0;
+  for (const tab of await probe.tabNames()) {
+    if (tab === READY_TAB) continue; // özet sekmesi: sheet-ready-tab.ts yazar
+    const counts = await annotateTab(tab, log);
+    if (counts) {
+      tabs++;
+      for (const [k, n] of counts) total.set(k, (total.get(k) ?? 0) + n);
+    }
+    await sleep(3000); // dakikalık okuma/yazma kotasına saygı
+  }
+  const rows = [...total.values()].reduce((a, b) => a + b, 0);
+  console.log(`\nToplam: ${tabs} sekme, ${rows} satır${dryRun ? ' (yazılmadı)' : ''}`);
+  for (const [k, n] of [...total].sort((x, y) => y[1] - x[1])) console.log(`  ${String(n).padStart(5)}  ${k}`);
   return 0;
 }
 

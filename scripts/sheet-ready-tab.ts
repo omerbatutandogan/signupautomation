@@ -3,49 +3,32 @@
  *
  *   npx tsx scripts/sheet-ready-tab.ts [--dry-run]
  *
- * "Hazır" = doğrulanmış (dry-run geçti) config, yüksek riskli ve taşınma onayı
- * bekleyen değil, açık hesabı yok, son gerçek denemesi kesin hatayla bitmemiş.
+ * "Hazır" = Sheet etiketlemesinin "Hazır" dediği site (annotate.ts): doğrulanmış (dry-run geçti) config,
+ * yüksek riskli ve taşınma onayı bekleyen değil, açık hesabı yok, son gerçek denemesi kesin hatayla
+ * bitmemiş ve aynı kayıt motorunda doğrulanmış bir engel (ör. görsel captcha) yok. Tek tanım iki yerde
+ * ayrışmasın diye burada ayrıca hesaplanmaz, aynı sınıflandırıcıdan okunur.
  * Kaynak sekmelere dokunmaz; yalnızca bu özet sekmesini baştan yazar.
  */
 
-import { readFileSync, readdirSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
-import Database from 'better-sqlite3';
 import pino from 'pino';
 import { env } from '../src/config.js';
 import { SheetClient } from '../src/integrations/sheet.js';
-import { isUnverified } from '../src/discovery/generate-config.js';
-import { awaitsMoveApproval } from '../src/core/markers.js';
-import { READY_HEADER, READY_TAB, readyTable, type Listing, type ReadySite } from '../src/discovery/annotate.js';
+import { annotate, DURUM, READY_HEADER, READY_TAB, readyTable, type Listing, type ReadySite } from '../src/discovery/annotate.js';
+import { defaultPaths, loadAnnotateSources, rowInputFor } from '../src/discovery/annotate-sources.js';
 
 const dryRun = process.argv.includes('--dry-run');
-
-function readJson<T>(path: string, fallback: T): T {
-  try {
-    return JSON.parse(readFileSync(path, 'utf8')) as T;
-  } catch {
-    return fallback;
-  }
-}
 
 async function main(): Promise<number> {
   const log = pino({ level: 'warn' });
 
-  // Ledger: hesabı açık ve takılı (terminal hatalı) siteler hazır sayılmaz.
-  const db = new Database('data/ledger.sqlite', { readonly: true, fileMustExist: true });
-  const rows = (sql: string) => (db.prepare(sql).all() as Array<{ site_id: string }>).map((r) => r.site_id);
-  const withAccount = new Set(rows("SELECT DISTINCT site_id FROM attempts WHERE status = 'completed' AND dry_run = 0 AND site_id NOT LIKE '%@%'"));
-  const blocked = new Set(rows("SELECT DISTINCT site_id FROM attempts WHERE terminal = 1 AND dry_run = 0 AND site_id NOT LIKE '%@%'"));
-  db.close();
-
-  const verification = readJson<Record<string, { captcha?: string }>>('data/verify-drafts/progress.json', {});
+  // Hazır siteler: etiketleme sınıflandırıcısının "Hazır" dediği her config. (Tarama dosyası sekmeye özeldir ve
+  // config'i olan site için belirleyici değildir; bu yüzden sekmeden bağımsız kaynaklar yeterlidir.)
+  const sources = loadAnnotateSources(defaultPaths(''));
   const ready: ReadySite[] = [];
-  for (const file of readdirSync('src/sites').filter((f) => f.endsWith('.json'))) {
-    const siteId = file.slice(0, -5);
-    const cfg = readJson<{ risk?: string; notes?: string; signupUrl?: string }>(`src/sites/${file}`, {});
-    if (cfg.risk === 'high' || awaitsMoveApproval(cfg) || isUnverified(cfg)) continue;
-    if (withAccount.has(siteId) || blocked.has(siteId)) continue;
-    ready.push({ siteId, signupUrl: cfg.signupUrl ?? '', captcha: verification[siteId]?.captcha ?? '' });
+  for (const [siteId, cfg] of sources.configs) {
+    if (annotate(rowInputFor(siteId, sources)).durum !== DURUM.READY) continue;
+    ready.push({ siteId, signupUrl: cfg.signupUrl, captcha: sources.verification[siteId]?.captcha ?? '' });
   }
 
   // Sheet: her sekmedeki satırlar (siteId → sekme + satır no).
