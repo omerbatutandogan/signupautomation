@@ -1,8 +1,8 @@
 {
-  "id": "com-mx",
-  "name": "com-mx",
+  "id": "hotfrog-za",
+  "name": "hotfrog-za",
   "risk": "low",
-  "signupUrl": "https://www.hotfrog.com.mx/register",
+  "signupUrl": "https://www.hotfrog.co.za/register",
   "steps": [
     {
       "type": "goto",
@@ -48,7 +48,7 @@
     },
     {
       "type": "click",
-      "selector": "#pwdtoggle_password"
+      "selector": "button:has-text('Register')"
     },
     {
       "type": "expect",

@@ -1,8 +1,8 @@
 {
-  "id": "com-pl",
-  "name": "com-pl",
+  "id": "hotfrog-mx",
+  "name": "hotfrog-mx",
   "risk": "low",
-  "signupUrl": "https://forum.audio.com.pl/register/",
+  "signupUrl": "https://www.hotfrog.com.mx/register",
   "steps": [
     {
       "type": "goto",
@@ -10,7 +10,7 @@
     },
     {
       "type": "waitFor",
-      "selector": "#elInput_email_address",
+      "selector": "#email",
       "timeoutMs": 20000
     },
     {
@@ -20,28 +20,22 @@
     },
     {
       "type": "fill",
-      "selector": "#elInput_username",
-      "field": "username",
-      "optional": true
-    },
-    {
-      "type": "fill",
-      "selector": "#elInput_email_address",
+      "selector": "#email",
       "field": "email"
     },
     {
       "type": "fill",
-      "selector": "#elInput_password",
+      "selector": "#password",
       "field": "password"
     },
     {
       "type": "fill",
-      "selector": "#elInput_password_confirm",
+      "selector": "#password_confirmation",
       "field": "password"
     },
     {
       "type": "click",
-      "selector": "label[for='check_b464c43ac63629a39e2eff12af3e1089']",
+      "selector": "label[for='accept_terms']",
       "optional": true
     },
     {
@@ -54,7 +48,7 @@
     },
     {
       "type": "click",
-      "selector": "button[type='submit']"
+      "selector": "#pwdtoggle_password"
     },
     {
       "type": "expect",
@@ -75,5 +69,5 @@
     "mode": "link",
     "timeoutMs": 180000
   },
-  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: direct-path, 0 sıçrama, güven: high. Captcha: recaptcha_v2. Uyarılar: Captcha tespit edildi: recaptcha_v2"
+  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: direct-path, 0 sıçrama, güven: high. Captcha: recaptcha_v2. TODO eşlenmeyen zorunlu alanlar: #name (zorunlu, text). Uyarılar: Captcha tespit edildi: recaptcha_v2"
 }

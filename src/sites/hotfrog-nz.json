@@ -1,8 +1,8 @@
 {
-  "id": "com-br",
-  "name": "com-br",
+  "id": "hotfrog-nz",
+  "name": "hotfrog-nz",
   "risk": "low",
-  "signupUrl": "https://www.misterwhat.com.br/user/register?view=modal",
+  "signupUrl": "https://www.hotfrog.co.nz/register",
   "steps": [
     {
       "type": "goto",
@@ -20,12 +20,6 @@
     },
     {
       "type": "fill",
-      "selector": "#surname",
-      "field": "lastName",
-      "optional": true
-    },
-    {
-      "type": "fill",
       "selector": "#email",
       "field": "email"
     },
@@ -35,8 +29,13 @@
       "field": "password"
     },
     {
+      "type": "fill",
+      "selector": "#password_confirmation",
+      "field": "password"
+    },
+    {
       "type": "click",
-      "selector": "label[for='accept']",
+      "selector": "label[for='accept_terms']",
       "optional": true
     },
     {
@@ -49,7 +48,7 @@
     },
     {
       "type": "click",
-      "selector": "button[type='submit']"
+      "selector": "button:has-text('Register')"
     },
     {
       "type": "expect",
@@ -70,5 +69,5 @@
     "mode": "link",
     "timeoutMs": 180000
   },
-  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: link-follow, 1 sıçrama, güven: high. Captcha görülmedi."
+  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: direct-path, 0 sıçrama, güven: high. Captcha: recaptcha_v2. TODO eşlenmeyen zorunlu alanlar: #name (zorunlu, text). Uyarılar: Captcha tespit edildi: recaptcha_v2"
 }

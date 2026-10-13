@@ -1,8 +1,8 @@
 {
-  "id": "org-nz",
-  "name": "org-nz",
+  "id": "misterwhat-br",
+  "name": "misterwhat-br",
   "risk": "low",
-  "signupUrl": "https://fyi.org.nz/profile/sign_in?r=%2F",
+  "signupUrl": "https://www.misterwhat.com.br/user/register?view=modal",
   "steps": [
     {
       "type": "goto",
@@ -10,7 +10,7 @@
     },
     {
       "type": "waitFor",
-      "selector": "#user_signup_email",
+      "selector": "#email",
       "timeoutMs": 20000
     },
     {
@@ -20,28 +20,24 @@
     },
     {
       "type": "fill",
-      "selector": "#user_signup_email",
+      "selector": "#surname",
+      "field": "lastName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#email",
       "field": "email"
     },
     {
       "type": "fill",
-      "selector": "#user_signup_password",
+      "selector": "#password",
       "field": "password"
     },
     {
-      "type": "fill",
-      "selector": "#user_signup_password_confirmation",
-      "field": "password"
-    },
-    {
-      "type": "fill",
-      "selector": "#user_signin_email",
-      "field": "email"
-    },
-    {
-      "type": "fill",
-      "selector": "#user_signin_password",
-      "field": "password"
+      "type": "click",
+      "selector": "label[for='accept']",
+      "optional": true
     },
     {
       "type": "captchaGate"
@@ -74,5 +70,5 @@
     "mode": "link",
     "timeoutMs": 180000
   },
-  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: link-follow, 1 sıçrama, güven: high. Captcha: recaptcha_v2. Uyarılar: Captcha tespit edildi: recaptcha_v2"
+  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: link-follow, 1 sıçrama, güven: high. Captcha görülmedi."
 }

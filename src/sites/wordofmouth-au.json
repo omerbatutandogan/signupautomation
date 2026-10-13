@@ -1,8 +1,8 @@
 {
-  "id": "co-uk",
-  "name": "co-uk",
+  "id": "wordofmouth-au",
+  "name": "wordofmouth-au",
   "risk": "low",
-  "signupUrl": "https://www.freeindex.co.uk/signup.htm",
+  "signupUrl": "https://www.wordofmouth.com.au/users/new_with_business",
   "steps": [
     {
       "type": "goto",
@@ -10,7 +10,7 @@
     },
     {
       "type": "waitFor",
-      "selector": "#signup_email",
+      "selector": "#user_email",
       "timeoutMs": 20000
     },
     {
@@ -20,58 +20,46 @@
     },
     {
       "type": "fill",
-      "selector": "#company_name",
-      "field": "companyName",
-      "optional": true
-    },
-    {
-      "type": "select",
-      "selector": "#company_type",
-      "field": "companyName",
-      "optional": true
-    },
-    {
-      "type": "fill",
-      "selector": "#category_cat-input-field",
-      "field": "category",
-      "optional": true
-    },
-    {
-      "type": "fill",
-      "selector": "#website",
-      "field": "website",
-      "optional": true
-    },
-    {
-      "type": "fill",
-      "selector": "#first_name",
+      "selector": "#user_first_name",
       "field": "firstName",
       "optional": true
     },
     {
       "type": "fill",
-      "selector": "#last_name",
+      "selector": "#user_last_name",
       "field": "lastName",
       "optional": true
     },
     {
       "type": "fill",
-      "selector": "#signup_email",
+      "selector": "#user_email",
       "field": "email"
     },
     {
       "type": "fill",
-      "selector": "#signup_password",
+      "selector": "#user_password",
       "field": "password"
     },
     {
       "type": "fill",
-      "selector": "#signup_confirm_password",
-      "field": "password"
+      "selector": "#user_business_attributes_business_name",
+      "field": "companyName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#user_business_attributes_email",
+      "field": "email"
+    },
+    {
+      "type": "fill",
+      "selector": "#user_business_attributes_website",
+      "field": "website",
+      "optional": true
     },
     {
       "type": "click",
-      "selector": "label[for='agree_terms']",
+      "selector": "label[for='terms-checkbox']",
       "optional": true
     },
     {
@@ -84,7 +72,7 @@
     },
     {
       "type": "click",
-      "selector": "#SrchButton"
+      "selector": "button:has-text('Register your business')"
     },
     {
       "type": "expect",
@@ -105,5 +93,5 @@
     "mode": "link",
     "timeoutMs": 180000
   },
-  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: link-follow, 1 sıçrama, güven: high. Captcha görülmedi."
+  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: link-follow, 1 sıçrama, güven: high. Captcha: turnstile. TODO eşlenmeyen zorunlu alanlar: #user_mobile (zorunlu, text), #user_business_attributes_business_categories_attributes_0__category (zorunlu, text), #user_business_attributes__location (zorunlu, text), #user_business_attributes_phone_number (zorunlu, text). Uyarılar: Captcha tespit edildi: turnstile"
 }

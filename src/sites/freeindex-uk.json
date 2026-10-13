@@ -1,8 +1,8 @@
 {
-  "id": "co-za",
-  "name": "co-za",
+  "id": "freeindex-uk",
+  "name": "freeindex-uk",
   "risk": "low",
-  "signupUrl": "https://www.hotfrog.co.za/register",
+  "signupUrl": "https://www.freeindex.co.uk/signup.htm",
   "steps": [
     {
       "type": "goto",
@@ -10,7 +10,7 @@
     },
     {
       "type": "waitFor",
-      "selector": "#email",
+      "selector": "#signup_email",
       "timeoutMs": 20000
     },
     {
@@ -20,22 +20,58 @@
     },
     {
       "type": "fill",
-      "selector": "#email",
+      "selector": "#company_name",
+      "field": "companyName",
+      "optional": true
+    },
+    {
+      "type": "select",
+      "selector": "#company_type",
+      "field": "companyName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#category_cat-input-field",
+      "field": "category",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#website",
+      "field": "website",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#first_name",
+      "field": "firstName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#last_name",
+      "field": "lastName",
+      "optional": true
+    },
+    {
+      "type": "fill",
+      "selector": "#signup_email",
       "field": "email"
     },
     {
       "type": "fill",
-      "selector": "#password",
+      "selector": "#signup_password",
       "field": "password"
     },
     {
       "type": "fill",
-      "selector": "#password_confirmation",
+      "selector": "#signup_confirm_password",
       "field": "password"
     },
     {
       "type": "click",
-      "selector": "label[for='accept_terms']",
+      "selector": "label[for='agree_terms']",
       "optional": true
     },
     {
@@ -48,7 +84,7 @@
     },
     {
       "type": "click",
-      "selector": "button:has-text('Register')"
+      "selector": "#SrchButton"
     },
     {
       "type": "expect",
@@ -69,5 +105,5 @@
     "mode": "link",
     "timeoutMs": 180000
   },
-  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: direct-path, 0 sıçrama, güven: high. Captcha: recaptcha_v2. TODO eşlenmeyen zorunlu alanlar: #name (zorunlu, text). Uyarılar: Captcha tespit edildi: recaptcha_v2"
+  "notes": "OTOMATİK ÜRETİLDİ — doğrulanmadı Keşif: link-follow, 1 sıçrama, güven: high. Captcha görülmedi."
 }
