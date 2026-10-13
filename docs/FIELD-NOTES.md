@@ -22,8 +22,8 @@ Yeni bir şey öğrendiğinizde önce config'in `notes`'una, genelleştirilebili
 | Site config'i | ~740 (`src/sites/`), bunların ~290'ı doğrulanmış (dry-run geçti), ~450'si "doğrulanmadı" taslak |
 | Risk dağılımı | 735 `low`, 1 `medium`, 4 `high` (ToS yasaklıyor) |
 | Doğrulama kipi | 732 `link`, 2 `code`, 6 `none` (taslaklarda varsayılan `link` bir **tahmindir**) |
-| Gerçek hesap | **30 site** açık (ledger'da `completed`, dry-run olmayan) |
-| Gerçek denemeler | 138 (32 `completed`, 79 `failed`, 22 `error`, 5 `manual`) → **yaklaşık dörtte biri hesapla sonuçlanıyor** |
+| Gerçek hesap | **33 site** açık (ledger'da `completed`, dry-run olmayan; 13 Ekim 2026) |
+| Gerçek denemeler | 156 (35 `completed`, 91 `failed`, 25 `error`, 5 `manual`) → **yaklaşık dörtte biri hesapla sonuçlanıyor** |
 | Gerçek listeleme | 1 gönderim (`toolsnocode`), 3 listeleme config'i ([LISTINGS.md §9](LISTINGS.md#9-mevcut-listeleme-configleri)) |
 
 **Başarısızlıkların dağılımı** (111 kesin olmayan/başarısız gerçek deneme): ~80 `Beklenen içerik görünmedi`, 8 doğrulama maili gelmedi, 7 ağ hatası, 5 zaman aşımı, 4 captcha'da insana düşme, geri kalanı tekil.
@@ -57,7 +57,7 @@ Aynı motoru kullanan siteler **aynı sebeple** takılır; bir tanesini çözmek
 
 | Sınıf / aile | Belirti | Karar |
 |---|---|---|
-| **Bookmarking motoru** (`1look4`, `ondashboard`, `coolpot`, `justpep`, `mootin`, `sharedais`, `urlsuggest`, `worldranklist`) | reCAPTCHA v2 (çözülür); kayıttan sonra **oturum açık kalır**, doğrulama maili yok | **Kayıt çalışır.** Ürün gönderimi 2 adımlı form: 2. adım, gerçek bir 1. adım gönderimi olmadan görülemez (dry-run yazan istekleri engeller) → listeleme config'i yazılamadı |
+| **Bookmarking (hikâye gönderme) motoru** (`1look4`, `ondashboard`, `coolpot`, `justpep`, `mootin`, `sharedais`, `urlsuggest`; `worldranklist` ayrı motor) | reCAPTCHA v2 (çözülür); kayıttan sonra **oturum açık kalır**, doğrulama maili yok | **Kayıt çalışır.** Gönderim 2 adımlı: 1. adımda yalnızca adres, 2. adımda başlık/kategori/açıklama + **görsel doğrulama kodu** (7 sitenin hepsinde gerçek 1. adımla doğrulandı, 13 Ekim) → kodu bir insan yazmadan tamamlanamaz. Site başlık ve açıklamayı ürünün kendi sayfasından okur |
 | **Ücretsiz web sitesi/blog platformu motoru** (`aboutyoublog`, `activablog`, `arwebo`, aynı motoru kullanan diğerleri) | Formda **görsel (yazı) captcha** (`SecureImg`) + reCAPTCHA; "Username should be alphanumeric" | **Elenir.** Sistem görsel captcha çözmez |
 | **Görsel captcha'lı tekil siteler** (`minds`, `trendystartups`) | "Enter the characters above" / "Type Image Values" | Elenir |
 | **hCaptcha forumları** (gerçek denemede doğrulananlar: `insanelymac`, `knittinghelp`, `logopond`, `psxextreme-info`; notlarında hCaptcha geçen ~40 config) | 2captcha 180 sn içinde çözemiyor, ardından insan beklenir | `solveCaptcha: false`; gözetimsiz koşuda atlanır, **elle** (görünür tarayıcıda) çözülürse çalışır |
@@ -118,13 +118,13 @@ Her biri gerçek bir vakadan; düzeltmesi kodda ya da config rehberinde (bkz. [S
 | `toolsnocode` | Giriş: e-posta + şifre, doğrulama yok. "Publish Tool" gönderimi **hemen oluşturur**; ürün sahibe görünür ve düzenlenebilir, ancak **anonim ziyaretçiye 404** (herkese açık olması site onayına bağlı görünüyor); **silme/yayından kaldırma yok** |
 | `10words` | Açıklama "10 kelime veya daha az" ister → slogan kullanılır. Giriş sonrası karşılama penceresi var (`dismiss`). Gönderim sonrası ödeme/sponsor yönlendirmesi ve bülten/sosyal medya tanıtımı olabilir; silme belirsiz → **bilinçli bekletiliyor** |
 | `sideprojects` | Tek adımlı form; kategori en çok 3, yalnızca "Developer tools" uygun; ücretsiz gönderim **inceleme kuyruğuna** girer (hemen yayınlanmaz); ücretli "skip the line" seçeneğine dokunulmaz |
-| Bookmarking motoru ailesi | Gönderim **2 adımlı**; 2. adım yalnızca gerçek bir 1. adım gönderiminden sonra görülebilir |
+| Bookmarking (hikâye gönderme) ailesi | Gönderim **2 adımlı**: 1. adım yalnızca adres (yayınlamaz, site başlık/açıklamayı geo.new'in kendi sayfasından okur); 2. adım başlık, kategori (SEO/Web/Software var), açıklama ve **görsel doğrulama kodu** ister |
 
 Genel ilkeler: gönderimden **önce** silme/düzenleme imkânını ve yayın davranışını araştırın; başarı işaretini gönderimden **sonra** oluşan bir şeyden seçin; tek site, tek koşu ile başlayın; `completed`'ı "herkese açık" saymayın.
 
 ## Bilinen açık konular (saha kaynaklı)
 
 - **Hesap açık mı?** sınıfı: "sonuç belirsiz" ve `Beklenen içerik görünmedi` ile bitmiş siteler için toplu bir **giriş yoklaması** (türetilmiş şifreyle giriş denemesi) hesapları ortaya çıkarabilir; yapılmadı.
-- **Bookmarking ailesi için listeleme config'i:** 2. adımı görmek için bilinçli bir gerçek 1. adım gönderimi gerekir.
+- **Bookmarking ailesi:** 7 sitede de alanları sistem doldurabilir ama görsel doğrulama kodunu bir insan yazmalıdır; "insan kodu yazarken sistem bekler" biçiminde yardımlı bir akış (yeni bir `waitForValue` adımı) henüz yazılmadı.
 - **Görsel captcha ailesi** için çözüm yok; kapsam dışı.
 - **Logo dosyaları** yok; logo isteyen listeleme formları atlanıyor.
