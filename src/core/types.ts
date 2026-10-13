@@ -220,8 +220,8 @@ export interface StepBase {
   /** Bulunamazsa adım atlanır, hata fırlatılmaz. */
   optional?: boolean;
   timeoutMs?: number;
-  /** Koşul sağlanmazsa adım atlanır. */
-  when?: { urlContains?: string; visible?: string };
+  /** Koşul sağlanmazsa adım atlanır; `waitMs` verilirse koşul o süreye kadar beklenir (bkz. adapters/schema.ts). */
+  when?: { urlContains?: string; visible?: string; waitMs?: number };
 }
 
 export interface SiteConfig {

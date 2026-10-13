@@ -38,15 +38,13 @@ const DEFAULT_STEP_TIMEOUT = 10_000;
 /** humanInput adımında insanı bekleme süresinin varsayılanı. */
 const HUMAN_INPUT_TIMEOUT_MS = 300_000;
 
-/** Adımın `when` koşulu sağlanıyor mu? */
-async function shouldRun(ctx: SignupContext, step: Step): Promise<boolean> {
-  if (!step.when) return true;
+/** `when` koşulunun ŞU AN sağlanıp sağlanmadığı (bekleme yok). */
+async function whenHolds(ctx: SignupContext, when: NonNullable<Step['when']>): Promise<boolean> {
+  if (when.urlContains && !ctx.page.url().includes(when.urlContains)) return false;
 
-  if (step.when.urlContains && !ctx.page.url().includes(step.when.urlContains)) return false;
-
-  if (step.when.visible) {
+  if (when.visible) {
     const visible = await ctx.page
-      .locator(step.when.visible)
+      .locator(when.visible)
       .first()
       .isVisible()
       .catch(() => false);
@@ -54,6 +52,36 @@ async function shouldRun(ctx: SignupContext, step: Step): Promise<boolean> {
   }
 
   return true;
+}
+
+/** `when.waitMs` beklerken koşulun yoklanma aralığı. */
+const WHEN_POLL_MS = 250;
+
+/**
+ * Adımın `when` koşulu sağlanıyor mu?
+ *
+ * `when.waitMs` verilirse koşul o süreye kadar BEKLENİR; sonra yine sağlanmıyorsa adım atlanır. Neden: tıklama sayfayı hemen
+ * değiştirmeyebilir. 1look4'te tıklama 46 ms'de döner, site formu ~270 ms SONRA gönderir, yeni sayfa ~3 sn sonra açılır; koşul
+ * tıklamanın hemen ardından okununca o sayfanın TÜM adımları sessizce atlanıyordu. Bekleme dry-run'da da yapılır: sayfada
+ * sonradan beliren öğeler (banner gibi) orada da geç gelir; tıklama atlandığı için gelmeyen sayfada ise yalnızca `waitMs` kadar sürer.
+ */
+async function shouldRun(ctx: SignupContext, step: Step, log: SignupContext['log']): Promise<boolean> {
+  const when = step.when;
+  if (!when) return true;
+  if (await whenHolds(ctx, when)) return true;
+  if (!when.waitMs) return false;
+
+  const deadline = Date.now() + when.waitMs;
+  while (Date.now() < deadline) {
+    await ctx.page.waitForTimeout(Math.min(WHEN_POLL_MS, Math.max(0, deadline - Date.now())));
+    if (await whenHolds(ctx, when)) return true;
+  }
+  // Gerçek çalıştırmada beklenen sayfa gelmediyse bu bir anormallik (adımlar sessizce atlanır); dry-run'da tıklama olmadığı için beklenen durum.
+  const message = `when koşulu ${when.waitMs} ms içinde sağlanmadı, adım atlanıyor`;
+  const fields = { when, url: ctx.page.url() };
+  if (ctx.dryRun) log.info(fields, message);
+  else log.warn(fields, message);
+  return false;
 }
 
 /**
@@ -146,7 +174,7 @@ async function runStep(ctx: SignupContext, step: Step, index: number, hooks: Ste
   const timeoutMs = step.timeoutMs ?? DEFAULT_STEP_TIMEOUT;
   const log = ctx.log.child({ step: index, type: step.type });
 
-  if (!(await shouldRun(ctx, step))) {
+  if (!(await shouldRun(ctx, step, log))) {
     log.debug('when koşulu sağlanmadı, atlanıyor');
     return;
   }

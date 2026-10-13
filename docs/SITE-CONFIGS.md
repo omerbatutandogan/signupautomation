@@ -60,7 +60,13 @@ ortak yürütücü ([src/adapters/generic.ts](../src/adapters/generic.ts)) dosya
 |---|---|
 | `optional: true` | Seçici bulunamazsa adım **atlanır**, hata verilmez (yalnızca bazı sitelerde görünen alanlar için) |
 | `timeoutMs` | Bu adımın bekleme süresi (varsayılan 10 000 ms). `goto` için gezinti süresi bunun iki katıdır |
-| `when` | Koşul sağlanmazsa adım atlanır: `{ "urlContains": "…" }` (adres parçası) ve/veya `{ "visible": "<seçici>" }` (görünür öğe). İkisi birlikte verilirse ikisi de gerekir |
+| `when` | Koşul sağlanmazsa adım atlanır: `{ "urlContains": "…" }` (adres parçası) ve/veya `{ "visible": "<seçici>" }` (görünür öğe). İkisi birlikte verilirse ikisi de gerekir. `"waitMs": N` (1–120 000) eklenirse koşul **N ms'ye kadar beklenir** (250 ms'de bir yoklanır), sonra yine sağlanmıyorsa adım atlanır. Verilmezse koşul **anında** okunur — bir tıklamadan hemen sonra sayfa henüz değişmemiş olabileceği için, sonraki sayfanın ilk korunan adımına `waitMs` yazın (aşağıdaki not) |
+
+> **`when` ve gecikmeli sayfa değişimi (1look4 vakası, 14 Ekim).** `click()` formu gönderirken **hemen döner**: 1look4'te 46 ms'de döndü, site formu ~0,3 sn sonra
+> gönderdi ve yeni sayfa ~3 sn sonra açıldı (site ürünün adresini kendisi okuyor). Sonraki sayfanın adımları `when: { "urlContains": "…" }` ile korunuyorsa ve `waitMs`
+> yoksa, koşul tıklamanın hemen ardından (adres hâlâ eski) okunur ve o sayfanın **bütün adımları sessizce atlanır**: alanlar boş kalır, insan beklenmez, gönder
+> tıklanmaz ve çalıştırma `unconfirmed` biter. Çok sayfalı formlarda **ilk** korunan adıma `"waitMs": 20000` yazın; sayfa geldikten sonra kalan adımların
+> `waitMs`'ye ihtiyacı yoktur (adres artık doğrudur). Süre dolarsa gerçek çalıştırmada uyarı (`when koşulu … sağlanmadı`), dry-run'da bilgi satırı düşer.
 
 Seçici bulunamadığında hata **sınıflandırılır**: sayfa yüklenmişse seçici gerçekten yoktur (`Selector bulunamadı` → kalıcı hata, config çürümüş);
 sayfa hiç yüklenmemişse ağ sorunudur (geçici hata, tekrar denenebilir).
@@ -96,6 +102,7 @@ Dry-run formu doldurur ama **göndermez**; adım adım:
 | `expect` | Atlanır (gönderim olmadığı için sonuç sayfası yoktur) |
 | `captchaGate` | Captcha görülürse ekran görüntüsü alınır; **çözülmez, insan beklenmez** |
 | `humanInput` | **Atlanır** (insan beklenmez; gönderim zaten yapılmıyor) |
+| `when` + `waitMs` | **Beklenir** (sayfada sonradan beliren öğeler dry-run'da da geç gelir). Tıklama atlandığı için hiç gelmeyen sonraki sayfada `waitMs` kadar sürer, sonra adım atlanır (log: bilgi) |
 
 Dry-run sonrası otomatik denetim: kritik alanlar (`email`, `password`) boş kaldıysa ya da sayfa formdaki bir zorunlu alanı boş görüyorsa sonuç `manual`
 olur ("doğrulanmadı" damgası kalkmaz). Görünmez zorunlu alan ve diğer boş alanlar uyarı olarak yazılır. Gönder (`click`) adımı hiç yoksa uyarılır.

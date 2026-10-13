@@ -38,11 +38,16 @@ const common = {
   /** Bulunamazsa adım atlanır, hata fırlatılmaz. */
   optional: z.boolean().optional(),
   timeoutMs: z.number().int().positive().optional(),
-  /** Koşul sağlanmazsa adım atlanır. */
+  /**
+   * Koşul sağlanmazsa adım atlanır. `waitMs` verilirse koşul o süreye kadar BEKLENİR (yoklanır), sonra yine sağlanmıyorsa atlanır:
+   * bir tıklamadan sonra sayfa gecikmeli değişen sitelerde (tıklama döner, form biraz sonra gönderilir, yeni sayfa saniyeler sonra
+   * gelir) bir sonraki sayfanın adımlarını korumak için. Verilmezse koşul anında okunur.
+   */
   when: z
     .object({
       urlContains: z.string().optional(),
       visible: z.string().optional(),
+      waitMs: z.number().int().positive().max(120_000).optional(),
     })
     .optional(),
 };

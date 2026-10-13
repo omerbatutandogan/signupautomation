@@ -64,13 +64,13 @@ let server: Server;
 let browser: Browser;
 let base = '';
 let port = 0;
-const received = { loginPosts: 0, flakyLoginPosts: 0, beacons: 0, sameSiteBeacons: 0, dupChecks: 0, submitPosts: [] as Array<Record<string, string>> };
+const received = { loginPosts: 0, flakyLoginPosts: 0, beacons: 0, sameSiteBeacons: 0, dupChecks: 0, submitPosts: [] as Array<Record<string, string>>, twoStepNext: 0, twoStepCreates: [] as Array<Record<string, string>> };
 let submissionsDir = '';
 let approvalDir = '';
 let assetsDir = '';
 const tempDirs: string[] = [];
 
-const page = (body: string) => `<!doctype html><html><body>${body}</body></html>`;
+const page = (body: string) => `<!doctype html><html><head><meta charset="utf-8"></head><body>${body}</body></html>`;
 const LOGOUT = '<a id="logout" href="/logout">Log out</a>';
 const FORM = `<form method="post" action="/submit">
   <input name="site"><input name="title"><textarea name="desc"></textarea>
@@ -113,6 +113,12 @@ function listingPage(path: string): string | null {
       return (
         LOGOUT +
         `<button id="next" type="button" onclick="document.body.insertAdjacentHTML('beforeend','<h2 id=ok>Thank you</h2><button id=send2 type=button>Done</button>')">Next</button>`
+      );
+    case '/two-step': // 1look4 gibi: tıklama hemen döner, form ~300 ms SONRA gönderilir, 2. sayfa geç gelir
+      return (
+        LOGOUT +
+        `<form method="post" action="/two-step/next" onsubmit="event.preventDefault(); var f = this; setTimeout(function () { f.submit(); }, 300)">
+           <input name="site"><button id="next" type="submit">Next</button></form>`
       );
     case '/submit-sw': // seçim, bir service worker üzerinden kendi POST'unu attırır
       return (
@@ -224,6 +230,24 @@ beforeAll(async () => {
           ),
         );
       }
+      if (pathname === '/two-step/next' && req.method === 'POST') {
+        // 1. adım: sunucu adresi okurken bekler (site geo.new'i kendisi okur), sonra 2. sayfa (adres /two-step/next kalır).
+        received.twoStepNext++;
+        setTimeout(
+          () =>
+            send(
+              200,
+              page(`<form method="post" action="/two-step/create"><textarea name="title" id="t2"></textarea><textarea name="desc" id="d2"></textarea>
+                      <input name="code" id="code"><button id="create" type="submit">Create</button></form>`),
+            ),
+          800,
+        );
+        return;
+      }
+      if (pathname === '/two-step/create' && req.method === 'POST') {
+        received.twoStepCreates.push(Object.fromEntries(new URLSearchParams(body)));
+        return send(200, page(THANKS));
+      }
       if (pathname === '/submit' && req.method === 'POST') {
         received.submitPosts.push(Object.fromEntries(new URLSearchParams(body)));
         return send(200, page(THANKS));
@@ -300,7 +324,7 @@ let launches = 0;
 let lastLaunch: { key: string; ephemeral: boolean } | null = null;
 function options(ledger: Ledger, over: Partial<SubmitOptions> = {}): SubmitOptions {
   return {
-    log: pino({ level: 'silent' }),
+    log: pino({ level: process.env.TEST_LOG_LEVEL ?? 'silent' }),
     ledger,
     dryRun: true,
     submissionsDir,
@@ -327,6 +351,8 @@ beforeEach(async () => {
   received.dupChecks = 0;
   captured.html.length = 0;
   received.submitPosts.length = 0;
+  received.twoStepNext = 0;
+  received.twoStepCreates.length = 0;
   launches = 0;
   lastLaunch = null;
   humanCaptcha.handler = async () => {
@@ -1140,6 +1166,69 @@ describe('submitListing — GERÇEK gönderim', () => {
     await approve();
     const outcome = await submitListing('fixture-wizard', live(ledger));
     expect(outcome.status).toBe('completed');
+    ledger.close();
+  }, 60_000);
+
+  /** 1look4'ün şekli: 1. adımdan sonra 2. sayfanın adımları `when` ile korunur; ilk korunan adım sayfayı BEKLER (waitMs). */
+  const twoStepSteps = (waitMs: number | undefined) => {
+    const onNextPage = { urlContains: '/two-step/next' };
+    return [
+      { type: 'goto', url: '{{signupUrl}}' },
+      { type: 'fill', selector: "input[name='site']", field: 'website' },
+      { type: 'click', selector: '#next' },
+      { type: 'waitFor', selector: '#t2', timeoutMs: 10_000, when: { ...onNextPage, ...(waitMs ? { waitMs } : {}) } },
+      { type: 'fill', selector: '#t2', field: 'productTitle', when: onNextPage },
+      { type: 'fill', selector: '#d2', field: 'description', when: onNextPage },
+      { type: 'humanInput', selector: '#code', minLength: 3, timeoutMs: 20_000, when: onNextPage },
+      { type: 'click', selector: '#create', when: onNextPage },
+    ];
+  };
+
+  /** İnsan taklidi: kod alanı görününce yarım saniye sonra kodu yazar. */
+  const humanTypes = (code: string): SubmitOptions['launch'] => async () => {
+    const ctx = await browser.newContext();
+    const p = await ctx.newPage();
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          if (!(await p.locator('#code').isVisible())) return;
+          clearInterval(timer);
+          await p.waitForTimeout(500);
+          await p.fill('#code', code);
+        } catch {
+          /* sayfa gezinirken */
+        }
+      })();
+    }, 200);
+    return { page: p, close: async () => { clearInterval(timer); await ctx.close(); } };
+  };
+
+  it('gecikmeli iki sayfalı form (1look4): 2. sayfanın adımları ÇALIŞIR, insan kodu yazınca gönderilir ve başarı doğrulanır', async () => {
+    await writeConfig('fixture-two-step', { listingUrl: `${base}/two-step`, steps: twoStepSteps(15_000) });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-two-step');
+    const profile = await approve();
+    const outcome = await submitListing('fixture-two-step', live(ledger, { launch: humanTypes('x7k2p') }));
+
+    expect(outcome.status).toBe('completed');
+    expect(received.twoStepNext).toBe(1);
+    expect(received.twoStepCreates).toHaveLength(1); // yayın tam bir kez
+    const create = received.twoStepCreates[0]!;
+    expect(create.title).toBe(`${profile.companyName} — ${profile.tagline}`); // alanlar bizim (onaylı) metinle dolu
+    expect(create.desc!.length).toBeGreaterThan(20);
+    expect(create.code).toBe('x7k2p'); // insanın yazdığı kod
+    ledger.close();
+  }, 90_000);
+
+  it('iki sayfalı form dry-run: tıklama atlanır, hiçbir şey gönderilmez, takılmaz', async () => {
+    await writeConfig('fixture-two-step-dry', { listingUrl: `${base}/two-step`, steps: twoStepSteps(1_200) });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-two-step-dry');
+    const outcome = await submitListing('fixture-two-step-dry', options(ledger));
+
+    expect(outcome.status).toBe('completed');
+    expect(received.twoStepNext).toBe(0); // 1. adımın POST'u bile çıkmadı
+    expect(received.twoStepCreates).toEqual([]);
     ledger.close();
   }, 60_000);
 

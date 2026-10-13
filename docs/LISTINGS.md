@@ -185,6 +185,7 @@ Dosya: `src/submissions/<siteId>.json` ([src/adapters/submission-schema.ts](../s
 5. Önce **dry-run**: `npm run cli -- submit <id>`; sonucun `completed (dry-run — gönderilmedi)` ve uyarısız olduğunu, ekran görüntüsünde alanların doğru dolduğunu kontrol edin.
 6. Gerçek gönderime geçmeden önce: ürün bilgisi doğru mu (**yanlış/doğrulanmamış bilgi yayınlanmaz**), site gönderimi geri almaya izin veriyor mu, `approve-profile` verildi mi.
 7. İlk gerçek gönderim **tek bir site, tek koşu** olsun; sonucu ve herkese açık görünürlüğü doğrulayıp `notes`'a işleyin ([§6](#6-gönderimden-sonra)).
+8. **Çok sayfalı formlar:** 1. adımın "Gönder" tıklaması yeni sayfa gelmeden döner. Sonraki sayfanın adımlarını `when: { "urlContains": "…" }` ile koruyun ve **ilk korunan adıma `"waitMs": 20000` ekleyin**, yoksa koşul erken okunur ve o sayfanın tüm adımları sessizce atlanır ([SITE-CONFIGS.md](SITE-CONFIGS.md#her-adımda-bulunabilen-ortak-alanlar)). Dry-run'da tıklama atlandığı için 2. sayfa hiç görünmez: o sayfanın seçicileri dry-run'da **doğrulanamaz**, `notes`'a açıkça yazın. 1. adımın isteği ürünün adresini taşıdığından sistem onu "gönderilmiş olabilir" sayar; 2. sayfa gelmezse sonuç `unconfirmed` olur, hesapta ürün oluşmadığını doğrulayıp `reject-submission` ile işleyin.
 
 ## 9. Mevcut listeleme config'leri
 
