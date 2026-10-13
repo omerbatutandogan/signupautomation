@@ -203,6 +203,7 @@ Yeni bir sınıf eklemek: `DURUM` + `annotate()` (saf) + `test/annotate.test.ts`
 | `\| <tarih> GERÇEK denemede: …` | kayıt config'i | "Takıldı" sitelerinde Sorun sınıfı ve Not buradan çıkarılır (en SON `GERÇEK` bölümü okunur) |
 | `\| <tarih> LİSTELEME: <sınıf> — <ayrıntı>` | kayıt config'i | "Hesap açık" sitelerinde Sorun = `Listeleme: <sınıf>`, Not = ayrıntı |
 | `DÜZELTME GEREKİYOR` | listeleme config'i | "Gönderildi" Not'una "eski, yanlış metinle gönderildi — düzeltme bekliyor" uyarısı |
+| `İNSAN GEREKİYOR: <neden>` | listeleme config'i | "listeleme hazır" Not'una "insan gerekiyor: <neden>" uyarısı (ör. görsel doğrulama kodunu insan yazar) |
 | `BEKLETİLİYOR: <neden>` | listeleme config'i | "listeleme hazır" Not'una "bilinçli bekletiliyor: <neden>" uyarısı |
 
 **Aile çıkarımı** yalnızca motor düzeyindeki görsel captcha için yapılır (hCaptcha, SSO gibi siteye özgü engeller yayılmaz) ve kaynağın ledger'da **gerçekten takılmış** olmasını ister; form parmak izi en az 3 doldurulan alan ve en az bir motora özgü seçici içermelidir (`#email|#password` gibi jenerik ikililer aile belirtmez).

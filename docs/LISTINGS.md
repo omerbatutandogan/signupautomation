@@ -75,6 +75,7 @@ Ne zaman yeniden onay gerekir: profil içeriği değişti; logo eklendi/değişt
 3  Kilit sonrası yeniden bak   "daha önce gönderilmiş mi" tekrar sorulur (kontrol ile kilit arasında başka süreç göndermiş olabilir)
 4  Tarayıcı                    hesabın kalıcı profili (dry-run: geçici profil)
 5  Giriş                       listingUrl'e git; loggedIn işareti yoksa login adımlarını oynat; oturumun kurulmasını bekle
+                               (işaret görünmezse giriş BİR KEZ daha denenir: reklam yeniden yüklemesi gibi geçici nedenler; üçüncü deneme yok)
 6  Form                        steps'i oynat (gerçek tıklamadan hemen önce kanca çalışır)
 7a Dry-run: denetle             ekran görüntüsü + otomatik denetim + engellenen istek raporu
 7b Gerçek: başarıyı doğrula     success işaretini en çok 15 sn bekle → completed / unconfirmed

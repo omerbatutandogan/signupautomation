@@ -125,6 +125,6 @@ Genel ilkeler: gönderimden **önce** silme/düzenleme imkânını ve yayın dav
 ## Bilinen açık konular (saha kaynaklı)
 
 - **Hesap açık mı?** sınıfı: "sonuç belirsiz" ve `Beklenen içerik görünmedi` ile bitmiş siteler için toplu bir **giriş yoklaması** (türetilmiş şifreyle giriş denemesi) hesapları ortaya çıkarabilir; yapılmadı.
-- **Bookmarking ailesi:** 7 sitede de alanları sistem doldurabilir ama görsel doğrulama kodunu bir insan yazmalıdır; "insan kodu yazarken sistem bekler" biçiminde yardımlı bir akış (yeni bir `waitForValue` adımı) henüz yazılmadı.
+- **Bookmarking ailesi:** 7 sitede de alanları sistem doldurur ama görsel doğrulama kodunu bir **insan** yazmalıdır: listeleme config'lerinde `humanInput` adımı kodu bekler (tarayıcı görünür olmalı). Gönderim sonrası sayfanın başarı işareti henüz görülmedi; ilk gerçek gönderimden sonra config'e yazılacak.
 - **Görsel captcha ailesi** için çözüm yok; kapsam dışı.
 - **Logo dosyaları** yok; logo isteyen listeleme formları atlanıyor.

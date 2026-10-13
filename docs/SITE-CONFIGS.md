@@ -80,6 +80,7 @@ sayfa hiç yüklenmemişse ağ sorunudur (geçici hata, tekrar denenebilir).
 | `expect` | `anyOf` (dizi) | Kayıt gönderildikten sonra bu seçicilerden **biri** görünmeli. Görünmezse sayfa metni sınıflandırılır (aşağıda) |
 | `captchaGate` | – | Captcha varsa tespit eder; çözer ya da insana bırakır ([§8](#8-risk-ve-captcha)). Yoksa geçer |
 | `humanPause` | – (`minMs`, `maxMs`) | Rastgele kısa bekleme (varsayılan 800–2500 ms) |
+| `humanInput` | `selector` (+ `minLength`, `timeoutMs`) | Sistemin çözemediği alanı (ör. **görsel doğrulama kodu**) bir **insanın** doldurmasını bekler: tarayıcıyı öne getirir, uyarı basar, alan en az `minLength` (varsayılan 1) karakter olana kadar (kırpılmış değer) 0,5 sn'de bir bakar, sonra akış sürer. `timeoutMs` bu adımda insanı bekleme süresidir (varsayılan 5 dk); dolarsa `manual`. Tarayıcı görünür olmalı (`HEADLESS=false`); gözetimsiz çalıştırmada kullanmayın |
 | `custom` | `handler` | **Uygulanmadı** — çalıştırılırsa kalıcı hata verir. Kullanmayın |
 
 `fill`/`select`'te `field` ve `value` ikisi de yoksa config yüklenmez. İkisi birlikte verilirse `value` kazanır (`field: description` hariç).
@@ -94,6 +95,7 @@ Dry-run formu doldurur ama **göndermez**; adım adım:
 | `click` | **Atlanır** — yalnızca onay kutusu etiketi tıklamaları (DOM ile işaretleme) yapılır |
 | `expect` | Atlanır (gönderim olmadığı için sonuç sayfası yoktur) |
 | `captchaGate` | Captcha görülürse ekran görüntüsü alınır; **çözülmez, insan beklenmez** |
+| `humanInput` | **Atlanır** (insan beklenmez; gönderim zaten yapılmıyor) |
 
 Dry-run sonrası otomatik denetim: kritik alanlar (`email`, `password`) boş kaldıysa ya da sayfa formdaki bir zorunlu alanı boş görüyorsa sonuç `manual`
 olur ("doğrulanmadı" damgası kalkmaz). Görünmez zorunlu alan ve diğer boş alanlar uyarı olarak yazılır. Gönder (`click`) adımı hiç yoksa uyarılır.
@@ -126,6 +128,7 @@ URL'nin kayıt sayfasından uzaklaşması **tek başına başarı değildir**; y
 | `role` | İletişim kişisinin unvanı — **profilde yoksa boş bırakılır** (uydurma unvan yazılmaz) |
 | `twitter`, `linkedin`, `github` | Profildeki sosyal bağlantılar; yoksa atlanır |
 | `foundedYear` | Kuruluş yılı |
+| `productTitle` | `"<ürün adı> — <slogan>"` (ör. `geo.new — Free GEO audit for AI search`): liste/bookmarking sitelerinin tek satırlık başlık alanları için |
 | `terms` | Alan adı olarak tanınır ama değeri yoktur; şartlar kutusu `check`/`click` ile işaretlenir |
 
 ## 5. Doğrulama (`verification`)

@@ -77,7 +77,7 @@ Projenin hedefi **meşru bir ürünü, kullanım şartlarına uyan sitelerde, ke
 - Çözücü (2captcha) `CAPTCHA_API_KEY` doluysa kullanılır ve **varsayılan olarak açıktır** — ama yalnızca: `risk: high` **olmayan** sitelerde, config'te `"solveCaptcha": false` yazılmamışsa, **gerçek kayıtta**.
   Dry-run'da asla çözülmez (ücretli ve gönderimi zaten korumuyor). Listelemede tercih sitenin kayıt config'inden miras alınır; kayıt config'i yoksa kapalıdır.
 - İki bağımsız savunma: runner `risk: high` siteyi ağ isteğinden önce eler; ayrıca bir config elle `risk: high` + `solveCaptcha: true` yapılırsa çözücü yine reddeder.
-- Desteklenen: reCAPTCHA v2/v3, hCaptcha, Turnstile. **Görsel (yazı/resim) captcha çözülmez**: site elle bakılacak listeye düşer. hCaptcha 2captcha ile güvenilir değildir (180 sn sonra insana düşer).
+- Desteklenen: reCAPTCHA v2/v3, hCaptcha, Turnstile. **Görsel (yazı/resim) captcha çözülmez**: site elle bakılacak listeye düşer; yalnızca listeleme formunda bir **insan** kodu kendisi yazarsa (`humanInput` adımı) akış onu bekler ve sürer. hCaptcha 2captcha ile güvenilir değildir (180 sn sonra insana düşer).
 - Görünmez/pasif (skorlayan) captcha için insan çağrılmaz.
 - Çözücü yoksa/başarısızsa akış durur, tarayıcı öne gelir ve **insan** çözer (zaman aşımında `manual`).
 
