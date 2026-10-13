@@ -37,6 +37,8 @@ import type {
 const DEFAULT_STEP_TIMEOUT = 10_000;
 /** humanInput adımında insanı bekleme süresinin varsayılanı. */
 const HUMAN_INPUT_TIMEOUT_MS = 300_000;
+/** humanInput: alan dolduktan sonra değerin değişmeden kalması gereken süre (insan yazmayı bitirsin). */
+const HUMAN_INPUT_SETTLE_MS = 2_000;
 
 /** `when` koşulunun ŞU AN sağlanıp sağlanmadığı (bekleme yok). */
 async function whenHolds(ctx: SignupContext, when: NonNullable<Step['when']>): Promise<boolean> {
@@ -495,20 +497,39 @@ async function runStep(ctx: SignupContext, step: Step, index: number, hooks: Ste
       if (!locator) return;
 
       const need = step.minLength ?? 1;
+      const settleMs = step.settleMs ?? HUMAN_INPUT_SETTLE_MS;
       const waitMs = step.timeoutMs ?? HUMAN_INPUT_TIMEOUT_MS;
       await ctx.page.bringToFront().catch(() => undefined);
       log.warn(
-        { selector: step.selector, minLength: need, waitMinutes: Math.round(waitMs / 60_000) },
-        '🙋 İNSAN GİRİŞİ GEREKİYOR — tarayıcıdaki alanı (ör. görsel doğrulama kodu) siz doldurun; akış kendiliğinden devam edecek',
+        { selector: step.selector, minLength: need, settleMs, waitMinutes: Math.round(waitMs / 60_000) },
+        "🙋 İNSAN GİRİŞİ GEREKİYOR — tarayıcıdaki alanı (ör. görsel doğrulama kodu) siz doldurun, yazmayı bitirince birkaç saniye bekleyin; Enter'a ya da Gönder'e BASMAYIN, akış kendiliğinden devam edecek",
       );
+      // Alan `need` karaktere ulaşınca devam EDİLMEZ: insan hâlâ yazıyor olabilir (5-6 harflik kod 3. harfte gönderilirdi).
+      // Değer `settleMs` boyunca değişmeden kalınca insan bitirmiş sayılır.
       const deadline = Date.now() + waitMs;
+      let seen = '';
+      let stableSince = 0;
       while (Date.now() < deadline) {
-        const value = await locator.inputValue().catch(() => '');
-        if (value.trim().length >= need) {
-          log.info('İnsan girişi alındı, devam ediliyor');
+        // Alan sayfadan kaybolduysa (insan kendisi gönderdi ya da sayfa değişti) beklemenin anlamı kalmadı: sonraki adımlar
+        // kendi `when` koşuluyla karar verir; burada 5 dk takılmak yerine devam edilir.
+        if ((await locator.count().catch(() => 1)) === 0) {
+          log.warn({ selector: step.selector }, 'İnsan girişi alanı sayfadan kayboldu (sayfa değişti ya da insan kendisi gönderdi), devam ediliyor');
           return;
         }
-        await ctx.page.waitForTimeout(500);
+        const value = (await locator.inputValue({ timeout: 1_000 }).catch(() => '')).trim();
+        if (value.length >= need) {
+          if (value !== seen) {
+            seen = value;
+            stableSince = Date.now();
+          }
+          if (Date.now() - stableSince >= settleMs) {
+            log.info('İnsan girişi alındı, devam ediliyor');
+            return;
+          }
+        } else {
+          seen = '';
+        }
+        await ctx.page.waitForTimeout(250);
       }
       throw new ManualReviewError(`İnsan girişi beklenen alan zamanında doldurulmadı: ${step.selector}`, { selector: step.selector });
     }

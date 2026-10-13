@@ -106,8 +106,16 @@ const StepUnion = z.discriminatedUnion('type', [
   /**
    * İNSANIN dolduracağı alan (ör. görsel doğrulama kodu): sistem çözmeye çalışmaz, alan dolana kadar bekler ve akış sürer.
    * `minLength` (varsayılan 1) kırpılmış karakter sayısıdır; `timeoutMs` bu adımda insanı bekleme süresidir (varsayılan 5 dk).
+   * `settleMs` (varsayılan 2000): alan `minLength`'e ulaştıktan sonra değer bu kadar süre DEĞİŞMEDEN kalmalı. Yoksa 5-6 harflik bir
+   * kod yazılırken 3. harfte devam edilir ve gönder eksik kodla tıklanırdı. 0: alan dolar dolmaz devam et.
    */
-  z.object({ type: z.literal('humanInput'), selector: z.string().min(1), minLength: z.number().int().positive().optional(), ...common }),
+  z.object({
+    type: z.literal('humanInput'),
+    selector: z.string().min(1),
+    minLength: z.number().int().positive().optional(),
+    settleMs: z.number().int().nonnegative().max(30_000).optional(),
+    ...common,
+  }),
 
   /** Faz 1'de şemada var ama uygulanmıyor — override'lar için ayrılmış. */
   z.object({ type: z.literal('custom'), handler: z.string().min(1), ...common }),

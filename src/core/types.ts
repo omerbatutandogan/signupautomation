@@ -265,6 +265,8 @@ export interface Step extends StepBase {
   maxMs?: number;
   /** humanInput: alanın dolu sayılması için kırpılmış en az karakter sayısı. */
   minLength?: number;
+  /** humanInput: alan `minLength`'e ulaştıktan sonra değerin değişmeden kalması gereken süre (ms; varsayılan 2000). */
+  settleMs?: number;
   handler?: string;
 }
 
