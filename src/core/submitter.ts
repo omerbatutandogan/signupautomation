@@ -442,20 +442,31 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
           outcome = { status: 'failed', note: "Oturum açık değil ve config'te giriş adımları (login) yok", artifactsDir: shots.dir };
           return outcome;
         }
-        log.info('Oturum yok — giriş yapılıyor');
         // GİRİŞ bir yayın değildir (kendi hesabımıza oturum açıyoruz): dry-run'da bile giriş
         // adımları (tıklamalar dahil) çalışır, yoksa form hiç görünmezdi. Ama dry-run'ın
         // "captcha çözme/insan bekleme yok" kuralı korunur: captchaGate adımları ayıklanır.
-        const loginSteps = (config.login.steps as SiteConfig['steps']).filter((st) => !(opts.dryRun && st.type === 'captchaGate'));
-        const loginSite = siteFor(config.login.url, loginSteps);
-        state.phase = 'login';
-        await runSteps(signupContextFor(loginSite, false), loginSite.steps);
-        // Giriş isteği (XHR dahil) tıklamadan SONRA çıkabilir ve oturum çoğu zaman sayfa içinde
-        // kurulur: bitmeden ne gezin (istek yarıda kesilir) ne de ağ korumasının "giriş" aşamasını kapat.
-        await waitForLoginToSettle(page, config.login.url, config.loggedIn);
-        state.phase = 'prepare';
-        await page.goto(config.listingUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-        if (!(await isLoggedIn(8_000))) {
+        const login = config.login;
+        const loginSteps = (login.steps as SiteConfig['steps']).filter((st) => !(opts.dryRun && st.type === 'captchaGate'));
+        const loginSite = siteFor(login.url, loginSteps);
+        const logIn = async (): Promise<boolean> => {
+          log.info('Oturum yok — giriş yapılıyor');
+          state.phase = 'login';
+          await runSteps(signupContextFor(loginSite, false), loginSite.steps);
+          // Giriş isteği (XHR dahil) tıklamadan SONRA çıkabilir ve oturum çoğu zaman sayfa içinde
+          // kurulur: bitmeden ne gezin (istek yarıda kesilir) ne de ağ korumasının "giriş" aşamasını kapat.
+          await waitForLoginToSettle(page, login.url, config.loggedIn as string);
+          state.phase = 'prepare';
+          await page.goto(config.listingUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+          return isLoggedIn(8_000);
+        };
+        // Reklam-yoğun sitelerde sayfa, alanlar yazılırken yeniden yüklenip girişi sessizce boşa çıkarabiliyor (sharedais).
+        // Giriş bir yayın değil: bir kez daha denemek güvenli; iki denemeden fazlası değil (yanlış şifreyle hesap kilitlenmesin).
+        let loggedIn = await logIn();
+        if (!loggedIn) {
+          log.warn('Giriş işareti görünmedi (sayfa yeniden yüklenmiş olabilir) — giriş bir kez daha deneniyor');
+          loggedIn = await logIn();
+        }
+        if (!loggedIn) {
           await capture('login-failed');
           outcome = { status: 'failed', note: 'Giriş yapılamadı (oturum işareti görünmedi) — şifre/akış kontrol edilmeli', artifactsDir: shots.dir };
           return outcome;

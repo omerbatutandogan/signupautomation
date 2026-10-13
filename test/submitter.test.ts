@@ -64,7 +64,7 @@ let server: Server;
 let browser: Browser;
 let base = '';
 let port = 0;
-const received = { loginPosts: 0, beacons: 0, sameSiteBeacons: 0, dupChecks: 0, submitPosts: [] as Array<Record<string, string>> };
+const received = { loginPosts: 0, flakyLoginPosts: 0, beacons: 0, sameSiteBeacons: 0, dupChecks: 0, submitPosts: [] as Array<Record<string, string>> };
 let submissionsDir = '';
 let approvalDir = '';
 let assetsDir = '';
@@ -151,6 +151,15 @@ beforeAll(async () => {
                <input name="email"><input name="password" type="password"><button id="login-btn">Log in</button></form>`,
           ),
         );
+      }
+      if (pathname === '/login-flaky' && get) {
+        return send(200, page(`<form method="post" action="/login-flaky"><input name="email"><input name="password" type="password"><button id="login-btn">Log in</button></form>`));
+      }
+      if (pathname === '/login-flaky' && req.method === 'POST') {
+        // Reklam-yoğun siteler gibi: ilk giriş sessizce işe yaramaz (sayfa yeniden yüklenir, alanlar silinir), ikincisi tutar.
+        received.flakyLoginPosts++;
+        if (received.flakyLoginPosts < (globalThis as { __flakyOk?: number }).__flakyOk!) return send(302, '', { location: '/login-flaky' });
+        return send(302, '', { location: '/submit', 'set-cookie': 'sid=1; Path=/' });
       }
       if (pathname === '/login-mirror' && get) {
         // Yazılan değeri `value` özniteliğine yansıtır (React'in kontrollü girdileri gibi).
@@ -312,6 +321,7 @@ const live = (ledger: Ledger, over: Partial<SubmitOptions> = {}) => options(ledg
 
 beforeEach(async () => {
   received.loginPosts = 0;
+  received.flakyLoginPosts = 0;
   received.beacons = 0;
   received.sameSiteBeacons = 0;
   received.dupChecks = 0;
@@ -966,6 +976,47 @@ describe('submitListing — GERÇEK gönderim', () => {
     ledger.close();
   }, 120_000);
 
+  it('giriş ilk denemede sessizce işe yaramazsa (reklam sayfayı yeniden yükledi) BİR KEZ daha denenir ve gönderim sürer', async () => {
+    // Gerçek vaka (sharedais): giriş formu doldurulurken reklam sayfayı yeniden yükleyip alanları siliyordu; giriş tutmadı.
+    // Giriş bir yayın değildir, tekrar denemek güvenlidir.
+    (globalThis as { __flakyOk?: number }).__flakyOk = 2; // 2. POST'ta başarılı
+    await writeConfig('fixture-flaky', { login: { url: `${base}/login-flaky`, steps: [
+      { type: 'goto', url: '{{signupUrl}}' },
+      { type: 'fill', selector: "input[name='email']", field: 'email' },
+      { type: 'fill', selector: "input[name='password']", field: 'password' },
+      { type: 'click', selector: '#login-btn' },
+    ] } });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-flaky');
+    await approve();
+
+    const result = await submitListing('fixture-flaky', live(ledger));
+    expect(result.status).toBe('completed');
+    expect(received.flakyLoginPosts).toBe(2); // ilk deneme tutmadı, ikincisi tuttu
+    expect(received.submitPosts).toHaveLength(1);
+    ledger.close();
+  }, 120_000);
+
+  it('giriş iki denemede de tutmazsa failed (ikiden fazla deneme YOK, hiçbir şey gönderilmez)', async () => {
+    (globalThis as { __flakyOk?: number }).__flakyOk = 99; // hiç başarılı olmaz
+    await writeConfig('fixture-flaky2', { login: { url: `${base}/login-flaky`, steps: [
+      { type: 'goto', url: '{{signupUrl}}' },
+      { type: 'fill', selector: "input[name='email']", field: 'email' },
+      { type: 'fill', selector: "input[name='password']", field: 'password' },
+      { type: 'click', selector: '#login-btn' },
+    ] } });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-flaky2');
+    await approve();
+
+    const result = await submitListing('fixture-flaky2', live(ledger));
+    expect(result.status).toBe('failed');
+    expect(result.note).toMatch(/Giriş yapılamadı/);
+    expect(received.flakyLoginPosts).toBe(2);
+    expect(received.submitPosts).toHaveLength(0);
+    ledger.close();
+  }, 120_000);
+
   it('TIKLAMADAN SONRAKİ hata "unconfirmed" olur (yayınlanmış olabilir), "failed" değil', async () => {
     await writeConfig('fixture-after-click', {
       steps: [
@@ -1115,7 +1166,7 @@ describe('submitListing — GERÇEK gönderim', () => {
     const outcome = await submitListing('fixture-nologin', live(ledger));
     expect(outcome.status).toBe('failed');
     expect(outcome.note).toMatch(/Giriş yapılamadı/);
-    expect(received.loginPosts).toBe(1);
+    expect(received.loginPosts).toBe(2); // ilk deneme + TEK yeniden deneme (reklam yeniden yüklemesi gibi geçici nedenler için)
     expect(received.submitPosts).toEqual([]);
     expect(ledger.liveSubmission('fixture-nologin')).toBeNull();
     ledger.close();
