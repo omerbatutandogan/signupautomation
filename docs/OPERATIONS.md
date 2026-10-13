@@ -119,7 +119,7 @@ Her başarısız site için `data/pilot/<site>.log` ve `artifacts/<runId>/<anaht
 
 ### 3.6 Verim beklentisi
 
-Gerçek denemelerin yaklaşık dörtte biri hesapla sonuçlanıyor (12 Ekim 2026: 138 gerçek denemede 32 `completed`); kalanı sitelerin kendine özgü engelleri (görsel captcha ailesi, iş e-postası, SSO, çok adımlı form, hiç gelmeyen mail).
+Gerçek denemelerin yaklaşık dörtte biri hesapla sonuçlanıyor (13 Ekim 2026: 156 gerçek denemede 35 `completed`); kalanı sitelerin kendine özgü engelleri (görsel captcha ailesi, iş e-postası, SSO, çok adımlı form, hiç gelmeyen mail).
 Hız `MIN/MAX_GAP` ile sınırlıdır (ortalama ~12 dk → saatte ~5 site). Bu normaldir; hızlandırmak sinyal üretir ve verimi artırmaz. Ayrıntı: [FIELD-NOTES.md](FIELD-NOTES.md).
 
 ## 4. Keşif ve doğrulama turları
