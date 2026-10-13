@@ -125,6 +125,6 @@ Genel ilkeler: gönderimden **önce** silme/düzenleme imkânını ve yayın dav
 ## Bilinen açık konular (saha kaynaklı)
 
 - **Hesap açık mı?** sınıfı: "sonuç belirsiz" ve `Beklenen içerik görünmedi` ile bitmiş siteler için toplu bir **giriş yoklaması** (türetilmiş şifreyle giriş denemesi) hesapları ortaya çıkarabilir; yapılmadı.
-- **Bookmarking ailesi:** 7 sitede de alanları sistem doldurur ama görsel doğrulama kodunu bir **insan** yazmalıdır: listeleme config'lerinde `humanInput` adımı kodu bekler (tarayıcı görünür olmalı). Gönderim sonrası sayfanın başarı işareti henüz görülmedi; ilk gerçek gönderimden sonra config'e yazılacak.
+- **Bookmarking ailesi:** 7 sitede de alanları sistem doldurur ama görsel doğrulama kodunu bir **insan** yazmalıdır: listeleme config'lerinde `humanInput` adımı kodu bekler (tarayıcı görünür olmalı). İlk gerçek deneme (1look4, 14 Ekim) 2. adımı **atladı**: tıklama 46 ms'de döndü, site formu ~0,3 sn sonra gönderdi, 2. sayfa ~3 sn sonra açıldı; `when` koşulu erken okundu (`when.waitMs` ile düzeltildi, testli). Gönderim sonrası sayfanın başarı işareti henüz görülmedi; ilk **tamamlanan** gerçek gönderimden sonra config'e yazılacak.
 - **Görsel captcha ailesi** için çözüm yok; kapsam dışı.
 - **Logo dosyaları** yok; logo isteyen listeleme formları atlanıyor.
