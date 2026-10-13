@@ -94,6 +94,11 @@ function listingPage(path: string): string | null {
       );
     case '/submit-toast': // gönderim sonrası GECİKMELİ çıkan ve silinen toast
       return LOGOUT + FORM.replace('action="/submit"', 'action="/submit-toast"');
+    case '/submit-slow-nav': // 1look4 gibi: tıklama hemen döner, form ~300 ms sonra gönderilir, sunucu ~1,3 sn sonra yanıtlar
+      return (
+        LOGOUT +
+        FORM.replace('action="/submit"', `action="/submit-slow-nav" onsubmit="event.preventDefault(); var f = this; setTimeout(function () { f.submit(); }, 300)"`)
+      );
     case '/submit-yii-error': // Yii/Bootstrap: alan hatası ".has-error .help-block" içinde (1look4 ailesi: yanlış yazılmış doğrulama kodu)
       return LOGOUT + FORM.replace('action="/submit"', 'action="/submit-yii-error"');
     case '/submit-flash': // gönderim sonrası uyarısı kendiliğinden silinen form
@@ -218,6 +223,14 @@ beforeAll(async () => {
           ),
         );
       }
+      if (pathname === '/submit-slow-nav' && req.method === 'POST') {
+        received.submitPosts.push(Object.fromEntries(new URLSearchParams(body)));
+        setTimeout(
+          () => send(200, page(LOGOUT + `<div class="alert alert-success" role="alert">Saved, your entry is waiting for review</div>` + FORM.replace('action="/submit"', 'action="/submit-slow-nav"'))),
+          1_300,
+        );
+        return;
+      }
       if (pathname === '/submit-yii-error' && req.method === 'POST') {
         received.submitPosts.push(Object.fromEntries(new URLSearchParams(body)));
         return send(
@@ -241,7 +254,9 @@ beforeAll(async () => {
               `<div class="wrap"><div class="flash flash-error">Name is already taken</div></div>` +
               `<div class="error" style="display:none">Hidden template error</div>` + // görünmeyen şablon metni notu kirletmemeli
               FORM.replace('action="/submit"', 'action="/submit-flash"') +
-              `<script>setTimeout(() => document.querySelectorAll('.flash').forEach((e) => e.remove()), 700)</script>`,
+              // 400 ms: tıklamadan HEMEN sonraki okuma görür, sonraki yoklamalar (>= 600 ms sonra) göremez; yani ilk okumanın birikime
+              // katıldığı bu testle kanıtlanır.
+              `<script>setTimeout(() => document.querySelectorAll('.flash').forEach((e) => e.remove()), 400)</script>`,
           ),
         );
       }
@@ -989,6 +1004,21 @@ describe('submitListing — GERÇEK gönderim', () => {
     expect(result.note).toContain('Name is already taken');
     expect(result.note).toMatch(/Sayfa uyarısı/);
     expect(result.note).not.toContain('Hidden template error'); // yalnızca GÖRÜNEN uyarılar
+    expect(received.submitPosts).toHaveLength(1);
+    ledger.close();
+  }, 120_000);
+
+  it('gönderimden SONRA gecikmeli açılan sayfanın uyarısı da yakalanır (tıklama sayfa değişmeden döner)', async () => {
+    // Gerçek vaka (1look4): tıklama dönünce sayfa hâlâ eski; yeni sayfa ve "successfully submitted … for Review" uyarısı ~3 sn sonra
+    // gelir. Tıklamadan hemen sonraki tek okuma eski sayfayı gördü ve uyarı notta yoktu.
+    await writeConfig('fixture-slow-nav', { listingUrl: `${base}/submit-slow-nav`, success: { anyOf: ['#hic-gorunmeyen'] } });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-slow-nav');
+    await approve();
+
+    const result = await submitListing('fixture-slow-nav', live(ledger));
+    expect(result.status).toBe('unconfirmed');
+    expect(result.note).toContain('Saved, your entry is waiting for review');
     expect(received.submitPosts).toHaveLength(1);
     ledger.close();
   }, 120_000);

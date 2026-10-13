@@ -520,11 +520,16 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
       outcome = { status: 'failed', note: "Form adımları bitti ama gönderim yapılmadı (config'te çalışan bir click adımı yok)", artifactsDir: shots.dir };
       return outcome;
     }
-    // Uyarı/flash birkaç saniyede silinebilir: başarı beklemesinden ÖNCE, tıklamadan hemen sonra yakala.
-    const notices = await collectNotices(page);
-    if (notices) log.info({ notices }, 'Gönderimden hemen sonra sayfadaki uyarı');
+    // Uyarı/flash birkaç saniyede silinebilir ve sonuç sayfası tıklamadan sonra gecikmeli açılabilir: tıklamadan hemen sonra
+    // yakala, sonra başarı beklemesi boyunca her yoklamada yeniden oku.
+    const seenNotices: string[] = [];
+    const firstNotices = await collectNotices(page, seenNotices);
+    if (firstNotices) log.info({ notices: firstNotices }, 'Gönderimden hemen sonra sayfadaki uyarı');
     await shots.shot('submission-after-click');
-    const confirmed = await waitForSuccess(page, config.success);
+    const confirmed = await waitForSuccess(page, config.success, 15_000, async () => {
+      for (const text of await readNotices(page)) if (!seenNotices.includes(text)) seenNotices.push(text);
+    });
+    const notices = seenNotices.join(' | ').slice(0, 300);
     if (confirmed) {
       outcome = { status: 'completed', listingUrl: page.url(), note: `onaylandı (${confirmed})`, artifactsDir: shots.dir };
     } else {
@@ -595,27 +600,32 @@ async function waitForLoginToSettle(page: Page, loginUrl: string, loggedInSelect
 const NOTICE_SELECTORS =
   '[role="alert"], [role="status"], [aria-live="assertive"], .flash, .alert, .toast, .notice, .message, .error, .errors, .errorlist, .form-error, .invalid-feedback, .has-error .help-block, .help.is-danger, [class*="flash"], [class*="toast"], [class*="snackbar"]';
 
+/** Sayfada şu an GÖRÜNEN uyarı metinleri (tek okuma). */
+export async function readNotices(page: Page): Promise<string[]> {
+  return page
+    .evaluate((selector) => {
+      const out: string[] = [];
+      for (const el of Array.from(document.querySelectorAll(selector))) {
+        const box = el as HTMLElement;
+        if (box.getClientRects().length === 0 || getComputedStyle(box).visibility === 'hidden') continue;
+        const text = (box.innerText ?? '').replace(/\s+/g, ' ').trim();
+        if (text.length > 0 && text.length < 300) out.push(text);
+      }
+      return out;
+    }, NOTICE_SELECTORS)
+    .catch(() => [] as string[]);
+}
+
 /**
- * Sayfada şu an GÖRÜNEN uyarı metinleri. Siteler gönderim sonucunu (başarı ya da hata) birkaç saniye gösterip siliyor
- * (sideprojects: "flash messages fade out on their own"); 15 sn'lik başarı beklemesi bittiğinde kanıtta hiçbir şey kalmıyordu
- * ve gönderimin neden ilerlemediği bilinemiyordu. Tıklamadan HEMEN sonra iki kez (gecikmeli toast'lar için) okunur.
+ * Siteler gönderim sonucunu (başarı ya da hata) birkaç saniye gösterip siliyor (sideprojects: "flash messages fade out on their
+ * own") ve sonuç sayfası tıklamadan SONRA, gecikmeli açılabiliyor (1look4: tıklama döner, form ~0,3 sn sonra gönderilir, yeni sayfa
+ * ~3 sn sonra gelir); 15 sn'lik başarı beklemesi bittiğinde kanıtta hiçbir şey kalmıyordu ve gönderimin neden ilerlemediği
+ * bilinemiyordu. Tıklamadan HEMEN sonra iki kez (gecikmeli toast'lar için) okunur; sonuçlar `seen`'e birikir (çağıran, başarı
+ * beklemesi sırasında da aynı diziye ekler). Dönen metin kırpılmış birleşik özettir.
  */
-export async function collectNotices(page: Page): Promise<string> {
-  const seen: string[] = [];
+export async function collectNotices(page: Page, seen: string[] = []): Promise<string> {
   for (let round = 0; round < 2; round++) {
-    const texts = await page
-      .evaluate((selector) => {
-        const out: string[] = [];
-        for (const el of Array.from(document.querySelectorAll(selector))) {
-          const box = el as HTMLElement;
-          if (box.getClientRects().length === 0 || getComputedStyle(box).visibility === 'hidden') continue;
-          const text = (box.innerText ?? '').replace(/\s+/g, ' ').trim();
-          if (text.length > 0 && text.length < 300) out.push(text);
-        }
-        return out;
-      }, NOTICE_SELECTORS)
-      .catch(() => [] as string[]);
-    for (const text of texts) if (!seen.includes(text)) seen.push(text);
+    for (const text of await readNotices(page)) if (!seen.includes(text)) seen.push(text);
     if (round === 0) await page.waitForTimeout(600);
   }
   return seen.join(' | ').slice(0, 300);
@@ -637,11 +647,13 @@ async function waitForSuccess(
   page: Page,
   success: ValidatedSubmissionConfig['success'],
   timeoutMs = 15_000,
+  onPoll?: () => Promise<void>,
 ): Promise<string | null> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const hit = await matchSuccess(page, success);
     if (hit) return hit;
+    await onPoll?.();
     await page.waitForTimeout(500);
   }
   return null;

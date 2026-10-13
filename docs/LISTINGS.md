@@ -128,12 +128,14 @@ Başarı işareti `success.anyOf` (görünür seçici) ya da `success.urlContain
 `completed` = **sitenin başarı işareti göründü**. Bu, ürünün **herkese açık görünür** olduğu anlamına gelmez: siteler gönderimi moderasyon kuyruğuna alabilir, sahiplik doğrulaması isteyebilir ya da yalnızca sahibe gösterebilir.
 Bu yüzden her gerçek gönderimden sonra:
 
-1. **Giriş yapmadan** (gizli pencerede ya da `curl` ile) `listingUrl`'i açıp sayfanın gerçekten herkese açık olduğunu doğrulayın.
+1. **Giriş yapmadan** (gizli pencerede; `curl` bazı sitelerde `406 Not Acceptable` alır, 1look4 gibi) `listingUrl`'i açıp sayfanın gerçekten herkese açık olduğunu doğrulayın.
 2. Sonucu ilgili listeleme config'inin `notes`'una yazın (gönderim tarihi, adres, görünürlük, düzenle/sil seçenekleri).
 3. Siteye ürünü sonradan **düzenleme/silme** imkânı var mı bakın (kaldırma çoğu sitede yoktur; bunu ilk gönderimden **önce** araştırın).
 
 `unconfirmed` sonucu bir **elle kontrol** emridir: hesaba giriş yapıp ürünün oluşup oluşmadığına bakın. Not'ta **"Sayfa uyarısı"** varsa (sistem gönderimden hemen sonra görünen flash/toast metnini ve form alanı hatalarını — ör. Yii/Bootstrap `.has-error .help-block`, yanlış yazılmış doğrulama kodu için "Verification Code is invalid." — kaydeder; siteler flash'ı birkaç saniyede siler) nedeni orada okunur.
-Oluşmuşsa `--force` ile **tekrar göndermeyin**; ürün yoksa nedenini giderin ve `npm run cli -- reject-submission <site> --note "<kanıt>"` ile "yayınlanmadı" diye işleyin (sonraki gönderim `--force` istemez, Sheet "Gönderildi" demez).
+Sistem uyarıyı gönderimden hemen sonra **ve** başarı beklemesi boyunca her yoklamada okur (sonuç sayfası gecikmeli açılabilir).
+Ürün **oluşmuşsa** `--force` ile tekrar göndermeyin; sitede gördüğünüz kanıtla `npm run cli -- confirm-submission <site> --note "<kanıt>" --url <herkese açık adres>` ile "gönderildi" diye işleyin (satır `completed` olur, Sheet "Gönderildi" der).
+Ürün **yoksa** nedenini giderin ve `npm run cli -- reject-submission <site> --note "<kanıt>"` ile "yayınlanmadı" diye işleyin (sonraki gönderim `--force` istemez, Sheet "Gönderildi" demez).
 
 ## 7. Durumlar
 
