@@ -202,7 +202,7 @@ export function annotate(input: RowInput): Annotation {
 
   if (input.hasAccount) {
     if (listing?.state === 'ready') {
-      return { durum: DURUM.LISTING_READY, sorun: '', not: join('Listeleme config\'i dry-run\'dan geçti; gönderim için önce approve-profile gerekir.', listing.caveat && `${listing.caveat}.`, input.accountNote) };
+      return { durum: DURUM.LISTING_READY, sorun: '', not: join('Listeleme config\'i dry-run\'dan geçti; gerçek gönderim için profil onayı (approve-profile) güncel olmalı.', listing.caveat && `${listing.caveat}.`, input.accountNote) };
     }
     return { durum: DURUM.ACCOUNT, sorun: listing?.blocker ?? '', not: join(listing?.blockerNote, input.accountNote) };
   }

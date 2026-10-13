@@ -1,0 +1,98 @@
+{
+  "id": "mootin",
+  "name": "mootin",
+  "listingUrl": "http://mootin.com/story/submit",
+  "loggedIn": ".dropdown-toggle:has-text('geonew_')",
+  "login": {
+    "url": "http://mootin.com/user/sign-in/login",
+    "steps": [
+      {
+        "type": "goto",
+        "url": "{{signupUrl}}"
+      },
+      {
+        "type": "fill",
+        "selector": "#loginform-identity",
+        "field": "email"
+      },
+      {
+        "type": "fill",
+        "selector": "#loginform-password",
+        "field": "password"
+      },
+      {
+        "type": "click",
+        "selector": "button[name='login-button']"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "type": "goto",
+      "url": "{{signupUrl}}"
+    },
+    {
+      "type": "fill",
+      "selector": "#story-link_url",
+      "field": "website"
+    },
+    {
+      "type": "click",
+      "selector": "form[action='/story/submitarticle'] button[type='submit']"
+    },
+    {
+      "type": "waitFor",
+      "selector": "#story-link_title",
+      "timeoutMs": 20000,
+      "when": {
+        "urlContains": "/story/submitarticle"
+      }
+    },
+    {
+      "type": "fill",
+      "selector": "#story-link_title",
+      "field": "productTitle",
+      "when": {
+        "urlContains": "/story/submitarticle"
+      }
+    },
+    {
+      "type": "select",
+      "selector": "#story-link_category",
+      "field": "category",
+      "when": {
+        "urlContains": "/story/submitarticle"
+      }
+    },
+    {
+      "type": "fill",
+      "selector": "#story-link_content",
+      "field": "description",
+      "when": {
+        "urlContains": "/story/submitarticle"
+      }
+    },
+    {
+      "type": "humanInput",
+      "selector": "#story-verifycode",
+      "minLength": 3,
+      "when": {
+        "urlContains": "/story/submitarticle"
+      }
+    },
+    {
+      "type": "click",
+      "selector": "form[action='/story/create'] button[type='submit']",
+      "when": {
+        "urlContains": "/story/submitarticle"
+      }
+    }
+  ],
+  "success": {
+    "anyOf": [
+      "text=/(story|link|article)[^.]{0,60}(submitted|added|created|saved|published|posted)/i",
+      "text=/thank you|thanks for (submitting|sharing)|pending (approval|moderation)|waiting (for|in)/i"
+    ]
+  },
+  "notes": "Hikâye gönderme motoru (7 kardeş site). 2026-10-13 gerçek 1. adımla incelendi: 1. adımda yalnızca adres; site başlık ve açıklamayı geo.new'in kendi sayfasından okuyor. 2. adımda başlık/kategori/açıklama ve GÖRSEL doğrulama kodu (Story[verifyCode]) isteniyor: humanInput adımı kodu İNSANIN yazmasını bekler (tarayıcı görünür olmalı, HEADLESS=false). Dry-run yalnızca girişi ve 1. adım formunu doldurur (1. adım POST'u engellenir, 2. adım hiç görünmez): 2. adımın seçicileri gerçek 1. adımda görülenlerdir, dry-run'da DOĞRULANMADI. BAŞARI İŞARETİ DOĞRULANMADI (gönder sonrası sayfa hiç görülmedi): tutmazsa sonuç 'unconfirmed' kalır ve Not'taki 'Sayfa uyarısı' nedeni söyler. Kategori profilden gelir (field:category → 'SEO'). Başlık = '<ürün adı> — <slogan>'. | 2026-10-13 İNSAN GEREKİYOR: görsel doğrulama kodunu tarayıcıda bir insan yazar (akış o alan dolana kadar bekler); gözetimsiz çalıştırılmaz"
+}

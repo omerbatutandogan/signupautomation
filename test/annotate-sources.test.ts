@@ -90,6 +90,7 @@ describe('listingCaveat', () => {
   it('"DÜZELTME GEREKİYOR" ve "BEKLETİLİYOR: <neden>" işaretlerini uyarıya çevirir', () => {
     expect(listingCaveat('a | 2026-10-12 DÜZELTME GEREKİYOR: eski metin')).toMatch(/düzeltme bekliyor/);
     expect(listingCaveat('a | 2026-10-13 BEKLETİLİYOR: silme imkânı belirsiz; sahip karar verecek.')).toBe('Bilinçli bekletiliyor: silme imkânı belirsiz; sahip karar verecek');
+    expect(listingCaveat('a | 2026-10-13 İNSAN GEREKİYOR: görsel doğrulama kodunu bir insan yazar.')).toBe('İnsan gerekiyor: görsel doğrulama kodunu bir insan yazar');
     expect(listingCaveat('sıradan not')).toBeUndefined();
   });
 });

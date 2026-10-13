@@ -97,13 +97,16 @@ export function listingBlockerFromNotes(notes: string): { blocker: string; block
 }
 
 /**
- * Listeleme config'inin notundaki iki işaret: "DÜZELTME GEREKİYOR" (yanlış metinle gönderilmiş, düzeltme bekliyor) ve
- * "BEKLETİLİYOR: <neden>" (gönderim bilinçli olarak durduruldu). Sheet'te Not'a uyarı olarak düşer.
+ * Listeleme config'inin notundaki işaretler: "DÜZELTME GEREKİYOR" (yanlış metinle gönderilmiş, düzeltme bekliyor),
+ * "BEKLETİLİYOR: <neden>" (gönderim bilinçli olarak durduruldu) ve "İNSAN GEREKİYOR: <neden>" (akış bir insanın girişini
+ * bekler, ör. görsel doğrulama kodu). Sheet'te Not'a uyarı olarak düşer.
  */
 export function listingCaveat(notes: string): string | undefined {
   if (notes.includes('DÜZELTME GEREKİYOR')) return 'Eski, yanlış ürün metniyle gönderildi — düzeltme bekliyor';
   const hold = /BEKLET[İI]L[İI]YOR:\s*([^|]+)/.exec(notes)?.[1]?.trim();
-  return hold ? `Bilinçli bekletiliyor: ${hold.replace(/\.$/, '')}` : undefined;
+  if (hold) return `Bilinçli bekletiliyor: ${hold.replace(/\.$/, '')}`;
+  const human = /[İI]NSAN GEREK[İI]YOR:\s*([^|]+)/.exec(notes)?.[1]?.trim();
+  return human ? `İnsan gerekiyor: ${human.replace(/\.$/, '')}` : undefined;
 }
 
 const localDate = (ms: number): string => {
