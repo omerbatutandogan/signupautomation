@@ -115,7 +115,7 @@
 | `Sheet bağlanamadı` | `SHEET_ID` boş, token'da Sheets yetkisi yok ya da token ölü | `.env`'i, `npm run gmail:auth`'u (spreadsheets izni) kontrol edin |
 | `sheet-annotate` "sekme bulunamadı"/boş satır | Sekme adı tam eşleşmiyor (bazılarında **sonda boşluk** var: `"Deals "`, `"File Upload "`) | `SHEET_TAB`'ı tırnak içinde, boşluğuyla birlikte yazın |
 | Yazım hatası: `Sheet yazımı başarısız` (uyarı) | Kota/ağ/yetki | Çalışmayı **düşürmez** (Sheet otorite değil); sonra `sheet-annotate`'i yeniden çalıştırın |
-| `.co.uk`, `.com.au`… sitelerinin satırları yanlış durum gösteriyor | `siteIdFromWebsite` ikili uzantılarda yanlış etiket alıyor (`co-uk`) ve farklı siteler aynı kimliğe düşüyor ([§8](#8-bilinen-sınırlamalar)) | Bu satırların durumuna güvenmeyin; düzeltme bekleyen bir iş |
+| `.co.uk`, `.com.au`… sitelerinin satırları yanlış durum gösteriyordu | `siteIdFromWebsite` ikili uzantılarda yanlış etiket alıyordu (`co-uk`) ve farklı siteler aynı kimliğe düşüyordu | 13 Ekim 2026'da düzeltildi; Sheet'i yeniden etiketleyin (`sheet-annotate --all`). Bu uzantılı siteler artık ayrı kimlik alır ve `discover` ile taranabilir |
 
 ## 7. Genel teşhis
 
@@ -136,8 +136,7 @@
 Dürüst liste: bunlar bilinen eksiklerdir, gizli hata değildir.
 
 - **Ölü Gmail token'ı geç fark edilir.** Gmail listeleme hatası geçici sayılıp süre dolana kadar tekrarlanır; token ölüyse her doğrulamalı site `EMAIL_TIMEOUT_MS` (10 dk) harcayıp `error` yazar. Uzun bir listeden önce `check-gmail` çalıştırın; token 5 günü geçtiyse yenileyin.
-- **Site kimliği çakışması:** `siteIdFromWebsite` `.co.uk`, `.com.au`, `.co.nz`, `.com.br`… gibi ikili uzantılarda yanlış etiketi seçer; sekiz taslak config yanlış adı taşır (`co-uk`, `co-nz`, `co-za`, `com-au`, `com-br`, `com-mx`, `com-pl`, `org-nz`) ve aynı uzantılı farklı siteler aynı kimliğe düşer.
-  Bu sitelerde gerçek hesap açılmamıştır; düzeltme (doğru kimlik + config yeniden adlandırma + Sheet eşlemesi) henüz yapılmadı.
+- **Eski kimlik çakışması düzeltildi, ama taranmamış siteler var:** `.co.uk`, `.com.au`, `.co.nz`… gibi ikili uzantılı yaklaşık 120 site (39 çöken kimlik) eskiden hiç taranmamıştı; kimlik düzeltildiği için artık taranabilir durumdalar, fakat `discover` henüz çalıştırılmadı (Sheet'te "Taranmadı" görünürler).
 - **Uygulanmamış özellikler:** `stealth` ve `custom` adım türü şemada vardır ama çalışmaz; `emailLocalPart` kullanılmaz; `src/adapters/overrides/` boştur (kod override mekanizması yüklenir ama hiç override yoktur);
   **Telegram bildirimi uygulanmamıştır** — captcha'da insan devralması yalnızca terminal çıktısı ve görünür tarayıcıyla çalışır.
 - **Logo dosyaları yok:** `src/profile/assets/` boştur; profil `assets/logo-*.png` yollarını gösterir. Onay kaydı bunları "dosya yok" olarak bağlar; logo eklemek içeriği değiştirdiği için **yeniden onay** ister ve logo isteyen listeleme formları atlanır.

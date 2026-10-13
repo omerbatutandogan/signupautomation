@@ -28,8 +28,9 @@ ortak yürütücü ([src/adapters/generic.ts](../src/adapters/generic.ts)) dosya
   Toplu doğrulama: `npm run cli -- list` (geçersiz config'in satırında hata görünür).
 - `id` Sheet'ten türetilir: `siteIdFromWebsite` ([src/integrations/sheet.ts](../src/integrations/sheet.ts)) alan adının anlamlı etiketini alır
   (`portal.10words.io` → `10words`); jenerik olmayan ülke uzantılarında uzantıyı ekler (`example.de` → `example-de`).
-  > **Bilinen sorun:** `.co.uk`, `.com.au` gibi ikili uzantılarda etiket yanlış seçilir (`freeindex.co.uk` → `co-uk`); sekiz taslak config bu yüzden `co-uk`, `co-nz`, `co-za`,
-  > `com-au`, `com-br`, `com-mx`, `com-pl`, `org-nz` adını taşır ve aynı uzantılı farklı siteler aynı kimliğe düşer. Bu sitelerde gerçek hesap açılmamıştır. Ayrıntı: [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+  İkili ülke uzantılarında (`.co.uk`, `.com.au`, `.org.nz`…) uzantı değil site adı seçilir: `freeindex.co.uk` → `freeindex-uk`, `forum.audio.com.pl` → `audio-pl`.
+  > Geçmiş: eskiden bu adresler `co-uk`, `com-au` gibi uzantı adlarına çözülüyor ve **88 farklı site sekiz kimliğe çöküyordu** (her kimliğin yalnızca ilk sitesi taranıyor, kalanı hiç görülmüyordu).
+  > 13 Ekim 2026'da düzeltildi; sekiz config yeni adına taşındı (`freeindex-uk`, `hotfrog-nz`, `hotfrog-za`, `wordofmouth-au`, `misterwhat-br`, `hotfrog-mx`, `audio-pl`, `fyi-nz`; hiçbirinde gerçek hesap yoktu).
 - Config'ler **herkese açık sitelere dair bilgidir**, sır değildir; git'te tutulur. Parola, token ya da kişisel e-posta config'e yazılmaz (yalnızca `field` ile ad verilir).
 
 ## 2. Üst düzey alanlar
