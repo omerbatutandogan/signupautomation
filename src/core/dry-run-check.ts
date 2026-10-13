@@ -62,13 +62,13 @@ export async function checkDryRunPage(page: Page, cfg: SiteConfig): Promise<DryR
 
   // 1. Doldurulması beklenen alanlar GERÇEKTEN doldu mu?
   for (const exp of fillExpectations(cfg)) {
-    const value = await page
-      .locator(exp.selector)
-      .first()
-      .inputValue()
-      .catch(() => null);
+    const field = page.locator(exp.selector).first();
+    // Sayfada OLMAYAN alan beklenmez: alanın gelmesini bekleyen fill adımı zaten çalıştı; yoksa sonraki sayfaya ait (`when` ile
+    // korunan) ya da atlanmıştır. `inputValue()` öğeyi tüm zaman aşımı boyunca beklerdi (alan başına 15 sn: 1look4 dry-run'ı 53 sn sürüyordu).
+    if ((await field.count().catch(() => 0)) === 0) continue;
+    const value = await field.inputValue({ timeout: 2_000 }).catch(() => null);
 
-    if (value === null) continue; // selector yok: fill adımı zaten atlamıştır
+    if (value === null) continue; // girdi değil / okunamadı: fill adımı zaten atlamıştır
     if (value === '') {
       issues.push({
         kind: 'empty_field',

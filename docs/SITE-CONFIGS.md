@@ -105,7 +105,7 @@ Dry-run formu doldurur ama **göndermez**; adım adım:
 | `when` + `waitMs` | **Beklenir** (sayfada sonradan beliren öğeler dry-run'da da geç gelir). Tıklama atlandığı için hiç gelmeyen sonraki sayfada `waitMs` kadar sürer, sonra adım atlanır (log: bilgi) |
 
 Dry-run sonrası otomatik denetim: kritik alanlar (`email`, `password`) boş kaldıysa ya da sayfa formdaki bir zorunlu alanı boş görüyorsa sonuç `manual`
-olur ("doğrulanmadı" damgası kalkmaz). Görünmez zorunlu alan ve diğer boş alanlar uyarı olarak yazılır. Gönder (`click`) adımı hiç yoksa uyarılır.
+olur ("doğrulanmadı" damgası kalkmaz). Görünmez zorunlu alan ve diğer boş alanlar uyarı olarak yazılır. Gönder (`click`) adımı hiç yoksa uyarılır. Sayfada **hiç olmayan** bir alan (ör. sonraki sayfaya ait, `when` ile korunan `fill`) bu denetimde **beklenmez ve boş sayılmaz** (eskiden alan başına tüm zaman aşımı beklenirdi: 1look4 dry-run'ı 53 sn sürüyordu, şimdi ~28 sn).
 
 ### `expect` sonrası sayfa metni sınıflandırması
 

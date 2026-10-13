@@ -45,6 +45,29 @@ function config(fillSelectors: string[]): SiteConfig {
   ) as SiteConfig;
 }
 
+describe('checkDryRunPage — sayfada olmayan alan', () => {
+  it('sonraki sayfaya ait (sayfada hiç olmayan) alanı BEKLEMEZ: zaman aşımı kadar takılmaz', async () => {
+    // Çok sayfalı listeleme formlarında 2. sayfanın alanları `when` ile korunur; dry-run 1. sayfada kalır.
+    // Eskiden her biri için tüm zaman aşımı beklenirdi (gerçek 1look4 dry-run'ı 53 sn sürdü).
+    await page.setContent('<form><input id="su-email" name="email" required value="a@b.com"><button id="su-submit">Kayıt</button></form>');
+    page.setDefaultTimeout(4_000);
+    try {
+      const started = Date.now();
+      const issues = await checkDryRunPage(page, config(['#su-email', '#ikinci-sayfa-1', '#ikinci-sayfa-2']));
+      expect(Date.now() - started).toBeLessThan(2_500);
+      expect(issues).toEqual([]); // olmayan alan "boş alan" sayılmaz
+    } finally {
+      page.setDefaultTimeout(30_000);
+    }
+  }, 30_000);
+
+  it('sayfada olan boş alanı HÂLÂ yakalar (bekleme kaldırılırken kontrol gevşemedi)', async () => {
+    await page.setContent('<form><input id="su-email" name="email"><button id="su-submit">Kayıt</button></form>');
+    const issues = await checkDryRunPage(page, config(['#su-email']));
+    expect(issues.map((i) => i.kind)).toContain('empty_field');
+  });
+});
+
 describe('checkDryRunPage — form kapsamı', () => {
   it('yandaki GÖRÜNÜR giriş formunun boş alanlarını kritik saymaz', async () => {
     await page.setContent(`
