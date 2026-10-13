@@ -163,3 +163,73 @@ describe('rejectSubmission', () => {
     expect(ledger.countLiveSubmissionsToday()).toBe(before);
   });
 });
+
+/**
+ * confirm-submission: reject-submission'ın tersi. Ürün sitede GERÇEKTEN oluştu ama sistem başarı işaretini tanımadı (1look4:
+ * "You have successfully submitted your story url for Review"): satır İNSAN kanıtıyla 'completed' olur ve herkese açık adres
+ * kaydedilir. Yanlış kullanım yalnızca "yayınlandı" demektir (çift yayını engelleyen yön), yine de dokunulan satır dar tutulur.
+ */
+describe('confirmSubmission', () => {
+  const send = (key: string, status: string, dry = false, url?: string) => {
+    const id = ledger.startSubmission(key, `run-${key}-${status}-${Math.random()}`, dry);
+    ledger.finishSubmission(id, status, 'özgün not', url);
+    return id;
+  };
+  const rows = (key: string) => ledger.recentSubmissions(20).filter((r) => r.account_key === key);
+
+  it('doğrulanamayan (unconfirmed) gerçek gönderimi completed yapar; not ve herkese açık adres kaydedilir', () => {
+    send('site-a', 'unconfirmed', false, 'https://x.example/story/submit');
+    expect(ledger.confirmSubmission('site-a', 'elle doğrulandı, GÖNDERİLDİ: hikâye sayfada', 'https://x.example/story/seo/geo')).toBe(1);
+
+    expect(rows('site-a')[0]).toMatchObject({ status: 'completed', note: 'elle doğrulandı, GÖNDERİLDİ: hikâye sayfada', listing_url: 'https://x.example/story/seo/geo' });
+    expect(ledger.liveSubmission('site-a')).toMatchObject({ status: 'completed', listing_url: 'https://x.example/story/seo/geo' });
+  });
+
+  it('adres verilmezse sistemin kaydettiği son adres korunur', () => {
+    send('site-b', 'unconfirmed', false, 'https://x.example/last');
+    expect(ledger.confirmSubmission('site-b', 'elle doğrulandı: var')).toBe(1);
+    expect(rows('site-b')[0]!.listing_url).toBe('https://x.example/last');
+  });
+
+  it('süreç ölmüş yarım (running) kaydı da onaylanabilir', () => {
+    ledger.startSubmission('site-c', 'run-1', false);
+    expect(ledger.confirmSubmission('site-c', 'elle doğrulandı: var')).toBe(1);
+    expect(ledger.liveSubmission('site-c')?.status).toBe('completed');
+  });
+
+  it("failed, zaten completed ve dry-run satırlarına DOKUNMAZ", () => {
+    send('site-d', 'failed');
+    send('site-d', 'completed', false, 'https://x.example/old');
+    send('site-d', 'unconfirmed', true); // dry-run satırı
+    ledger.startSubmission('site-d', 'run-dry', true); // yarım kalmış dry-run
+    expect(ledger.confirmSubmission('site-d', 'elle doğrulandı: x', 'https://x.example/new')).toBe(0);
+    const statuses = rows('site-d').map((r) => `${r.status}${r.dry_run ? '(dry)' : ''}`).sort();
+    expect(statuses).toEqual(['completed', 'failed', 'running(dry)', 'unconfirmed(dry)']);
+    expect(ledger.liveSubmission('site-d')?.listing_url).toBe('https://x.example/old'); // adres ezilmedi
+  });
+
+  it('birden çok doğrulanamamış deneme varsa yalnızca EN SON olanı onaylar (ikisi birden "yayınlandı" sayılmaz)', () => {
+    const first = send('site-e', 'unconfirmed');
+    const second = send('site-e', 'unconfirmed');
+    expect(ledger.confirmSubmission('site-e', 'elle doğrulandı: var')).toBe(1);
+    const byId = new Map(rows('site-e').map((r) => [r.id, r.status]));
+    expect(byId.get(second)).toBe('completed');
+    expect(byId.get(first)).toBe('unconfirmed');
+  });
+
+  it('yalnızca verilen hesabı etkiler; yoksa 0 döner', () => {
+    send('site-f', 'unconfirmed');
+    send('site-g', 'unconfirmed');
+    expect(ledger.confirmSubmission('site-f', 'elle doğrulandı: var')).toBe(1);
+    expect(ledger.liveSubmission('site-g')?.status).toBe('unconfirmed');
+    expect(ledger.confirmSubmission('yok', 'elle doğrulandı: var')).toBe(0);
+  });
+
+  it('günlük gerçek listeleme sayacını DEĞİŞTİRMEZ ve sonraki gönderimi engeller (skipped_done: çift yayın yok)', () => {
+    send('site-h', 'unconfirmed');
+    const before = ledger.countLiveSubmissionsToday();
+    ledger.confirmSubmission('site-h', 'elle doğrulandı: var');
+    expect(ledger.countLiveSubmissionsToday()).toBe(before);
+    expect(ledger.liveSubmission('site-h')).not.toBeNull(); // engel sürüyor
+  });
+});

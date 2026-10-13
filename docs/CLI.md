@@ -130,6 +130,16 @@ Satır `failed` olur; sonraki `submit --live` `--force` istemez ve Sheet "Gönde
 - Yalnızca **gerçek** gönderimleri ve `completed`/`failed` dışındaki durumları (`unconfirmed`, süreç ölmüş `running`) değiştirir. Gerçekten listelenmiş kayda ve dry-run satırlarına **dokunmaz**; günlük sayaç değişmez.
 - Gönderim gerçekte yayınlanmış olabilecekken kullanmayın: çift yayının önünü açar. Çıkış kodu: işlendiyse 0, doğrulanamamış gönderim yoksa 1.
 
+### `confirm-submission <siteId> --note "<kanıt>" [--url <adres>]` — "gönderim yayınlandı" kaydı
+
+`reject-submission`'ın tersi: sonucu doğrulanamayan (`unconfirmed`) bir gönderimin **gerçekte yayınlandığını** insan kanıtıyla işler: örn. ürün sitede oluştu ama sistem sitenin başarı mesajını tanımadı (1look4'ün ilk gerçek gönderimi böyle bitti).
+Satır `completed` olur; Sheet "Gönderildi" der, sonraki `submit --live` `--force` ister (çift yayın yok).
+
+- `--note` **zorunlu**, en az 10 karakter: ürünü sitede neyle gördünüz (adres, ekran görüntüsü). Nota `elle doğrulandı, GÖNDERİLDİ:` öneki eklenir.
+- `--url` (isteğe bağlı): ürünün **herkese açık** adresi; sistemin kaydettiği son adres (çoğu zaman gönderim sonrası sayfa) yerine yazılır. Geçerli bir http(s) adresi olmalı.
+- Yalnızca **gerçek** gönderimlerin **en son** doğrulanamamış satırını (`unconfirmed`, süreç ölmüş `running`) değiştirir; `failed`, zaten `completed` ve dry-run satırlarına **dokunmaz**; günlük sayaç değişmez. Çıkış kodu: işlendiyse 0, doğrulanamamış gönderim yoksa 1.
+- Önce ürünü sitede **gerçekten görün** (çerezsiz bir pencerede de). Görmeden işlemeyin: gerçekte yayınlanmamış bir kaydı "gönderildi" yapmak o siteye hiç listelenmemenin önünü kapatır.
+
 ### `unlock <siteId>` — takılı kilidi temizle
 
 Çalıştırma kilitleri süre dolunca (`LOCK_TTL_MS`, varsayılan 45 dk) kendiliğinden temizlenir (ledger her açılışta eskimiş kilitleri siler). Süre dolmadan

@@ -346,6 +346,28 @@ export class Ledger {
       .run(note, Date.now(), accountKey).changes;
   }
 
+  /**
+   * rejectSubmission'ın TERSİ: sonucu doğrulanamayan (`unconfirmed`, süreç ölmüş `running`) GERÇEK gönderimi İNSAN kanıtıyla
+   * "gönderildi" (`completed`) olarak işler. Örn. ürün sitede gerçekten oluştu ama sistem başarı işaretini tanımadı. Sheet
+   * "Gönderildi" der ve sonraki gönderim `--force` gerektirir (çift yayın yok).
+   *
+   * Yalnızca EN SON doğrulanamamış satırı değiştirir (iki ayrı deneme varsa ikisi birden "yayınlandı" sayılmasın); `failed`,
+   * zaten `completed` ve dry-run satırlarına DOKUNMAZ. `listingUrl` verilirse sistemin kaydettiği son adresin yerine yazılır
+   * (genellikle gönderim sonrası sayfa değil, ürünün herkese açık sayfası). Günlük sayaç değişmez.
+   * @returns değiştirilen satır sayısı (0 = doğrulanamamış gönderim yok)
+   */
+  confirmSubmission(accountKey: SiteId, note: string, listingUrl?: string): number {
+    const row = this.db
+      .prepare(
+        "SELECT id FROM submissions WHERE account_key = ? AND dry_run = 0 AND status NOT IN ('completed', 'failed') ORDER BY started_at DESC, id DESC LIMIT 1",
+      )
+      .get(accountKey) as { id: number } | undefined;
+    if (!row) return 0;
+    return this.db
+      .prepare("UPDATE submissions SET status = 'completed', note = ?, listing_url = COALESCE(?, listing_url), finished_at = COALESCE(finished_at, ?) WHERE id = ?")
+      .run(note, listingUrl ?? null, Date.now(), row.id).changes;
+  }
+
   /** Bugün başlatılan GERÇEK gönderim sayısı (kayıtlarla aynı günlük hız sınırı mantığı). */
   countLiveSubmissionsToday(): number {
     const startOfDay = new Date();

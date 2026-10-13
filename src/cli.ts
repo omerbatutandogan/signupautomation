@@ -67,6 +67,7 @@ Komutlar:
   list                    Tanımlı site config'lerini listele
   adopt-account <siteId> --note "<kanıt>"  Gerçekte AÇIK ama yanlış kaydedilmiş hesabı tamamlandı yap
   reject-submission <siteId> --note "<kanıt>"  Sonucu doğrulanamayan gönderimin gerçekte YAYINLANMADIĞINI işle (yeniden denenebilir)
+  confirm-submission <siteId> --note "<kanıt>" [--url <adres>]  Sonucu doğrulanamayan gönderimin gerçekte YAYINLANDIĞINI işle
   unlock <siteId>         Takılı kilidi temizle
   password <siteId>       Türetilmiş şifreyi yazdır
   check-gmail             Gmail bağlantısını doğrula
@@ -355,6 +356,38 @@ function cmdRejectSubmission(accountKeyValue: string, note: string | undefined):
       return 1;
     }
     console.log(`✅ ${accountKeyValue}: ${changed} gönderim "yayınlanmadı (failed)" olarak işlendi; yeniden denenebilir.`);
+    return 0;
+  } finally {
+    ledger.close();
+  }
+}
+
+/**
+ * Sonucu doğrulanamayan (`unconfirmed`) gönderimin gerçekte YAYINLANDIĞINI işler (reject-submission'ın tersi): ürün sitede
+ * oluştu ama başarı işareti tanınmadı. Kanıt notu ZORUNLU: ürünü sitede neyle gördüğün. `--url` verilirse herkese açık adres kaydedilir.
+ */
+function cmdConfirmSubmission(accountKeyValue: string, note: string | undefined, listingUrl: string | undefined): number {
+  if (!note || note.trim().length < 10) {
+    console.error('--note "<kanıt>" gerekli (en az 10 karakter): ürünü sitede neyle gördün (adres, ekran görüntüsü)?');
+    return 1;
+  }
+  if (listingUrl !== undefined) {
+    try {
+      const parsed = new URL(listingUrl);
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') throw new Error('http(s) değil');
+    } catch {
+      console.error(`--url geçerli bir http(s) adresi olmalı: "${listingUrl}"`);
+      return 1;
+    }
+  }
+  const ledger = new Ledger();
+  try {
+    const changed = ledger.confirmSubmission(accountKeyValue, `elle doğrulandı, GÖNDERİLDİ: ${note.trim()}`, listingUrl);
+    if (changed === 0) {
+      console.log(`ℹ️  ${accountKeyValue}: doğrulanamamış gerçek gönderim yok, değişiklik yapılmadı.`);
+      return 1;
+    }
+    console.log(`✅ ${accountKeyValue}: gönderim "gönderildi (completed)" olarak işlendi${listingUrl ? ` — ${listingUrl}` : ''}.`);
     return 0;
   } finally {
     ledger.close();
@@ -700,6 +733,22 @@ async function main(): Promise<void> {
       }
       const noteIdx = process.argv.indexOf('--note');
       code = cmdRejectSubmission(accountKey(productId, siteId), noteIdx >= 0 ? process.argv[noteIdx + 1] : undefined);
+      break;
+    }
+    case 'confirm-submission': {
+      const siteId = positional[0];
+      if (!siteId) {
+        console.error('Site id gerekli.');
+        code = 1;
+        break;
+      }
+      const noteIdx = process.argv.indexOf('--note');
+      const urlIdx = process.argv.indexOf('--url');
+      code = cmdConfirmSubmission(
+        accountKey(productId, siteId),
+        noteIdx >= 0 ? process.argv[noteIdx + 1] : undefined,
+        urlIdx >= 0 ? process.argv[urlIdx + 1] : undefined,
+      );
       break;
     }
     case 'unlock': {
