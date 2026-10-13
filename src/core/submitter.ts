@@ -509,6 +509,10 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
       outcome = { status: 'failed', note: "Form adımları bitti ama gönderim yapılmadı (config'te çalışan bir click adımı yok)", artifactsDir: shots.dir };
       return outcome;
     }
+    // Uyarı/flash birkaç saniyede silinebilir: başarı beklemesinden ÖNCE, tıklamadan hemen sonra yakala.
+    const notices = await collectNotices(page);
+    if (notices) log.info({ notices }, 'Gönderimden hemen sonra sayfadaki uyarı');
+    await shots.shot('submission-after-click');
     const confirmed = await waitForSuccess(page, config.success);
     if (confirmed) {
       outcome = { status: 'completed', listingUrl: page.url(), note: `onaylandı (${confirmed})`, artifactsDir: shots.dir };
@@ -516,7 +520,7 @@ export async function submitListing(siteId: SiteId, opts: SubmitOptions): Promis
       await capture('submission-unconfirmed');
       outcome = {
         status: 'unconfirmed',
-        note: 'Gönderildi ama başarı işareti görünmedi — elle kontrol edilmeli (yayınlanmış olabilir; otomatik tekrar denenmez)',
+        note: `Gönderildi ama başarı işareti görünmedi — elle kontrol edilmeli (yayınlanmış olabilir; otomatik tekrar denenmez)${notices ? `. Sayfa uyarısı: "${notices}"` : ''}`,
         listingUrl: page.url(),
         artifactsDir: shots.dir,
       };
@@ -571,6 +575,36 @@ async function waitForLoginToSettle(page: Page, loginUrl: string, loggedInSelect
     settled(page.locator(loggedInSelector).first().waitFor({ state: 'visible', timeout: timeoutMs })),
   ]);
   await page.waitForTimeout(500); // yönlendirmeyi izleyen sayfanın kendi istekleri bitsin
+}
+
+/** Uyarı/başarı iletisi taşıyan yaygın öğeler (flash, toast, alert, form hataları). */
+const NOTICE_SELECTORS =
+  '[role="alert"], [role="status"], [aria-live="assertive"], .flash, .alert, .toast, .notice, .message, .error, .errors, .errorlist, .form-error, .invalid-feedback, .help.is-danger, [class*="flash"], [class*="toast"], [class*="snackbar"]';
+
+/**
+ * Sayfada şu an GÖRÜNEN uyarı metinleri. Siteler gönderim sonucunu (başarı ya da hata) birkaç saniye gösterip siliyor
+ * (sideprojects: "flash messages fade out on their own"); 15 sn'lik başarı beklemesi bittiğinde kanıtta hiçbir şey kalmıyordu
+ * ve gönderimin neden ilerlemediği bilinemiyordu. Tıklamadan HEMEN sonra iki kez (gecikmeli toast'lar için) okunur.
+ */
+export async function collectNotices(page: Page): Promise<string> {
+  const seen: string[] = [];
+  for (let round = 0; round < 2; round++) {
+    const texts = await page
+      .evaluate((selector) => {
+        const out: string[] = [];
+        for (const el of Array.from(document.querySelectorAll(selector))) {
+          const box = el as HTMLElement;
+          if (box.getClientRects().length === 0 || getComputedStyle(box).visibility === 'hidden') continue;
+          const text = (box.innerText ?? '').replace(/\s+/g, ' ').trim();
+          if (text.length > 0 && text.length < 300) out.push(text);
+        }
+        return out;
+      }, NOTICE_SELECTORS)
+      .catch(() => [] as string[]);
+    for (const text of texts) if (!seen.includes(text)) seen.push(text);
+    if (round === 0) await page.waitForTimeout(600);
+  }
+  return seen.join(' | ').slice(0, 300);
 }
 
 /** Başarı işaretlerinden biri şu an görünüyor/uyuyor mu? Hangisinin uyduğunu döner. */

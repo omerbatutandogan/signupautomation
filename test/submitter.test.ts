@@ -92,6 +92,10 @@ function listingPage(path: string): string | null {
         `<form method="post" action="/submit"><select name="cat" onchange="this.form.submit()"><option value="">-</option><option>Developer Tools</option></select>
          <button id="send" type="submit">Submit</button></form>`
       );
+    case '/submit-toast': // gönderim sonrası GECİKMELİ çıkan ve silinen toast
+      return LOGOUT + FORM.replace('action="/submit"', 'action="/submit-toast"');
+    case '/submit-flash': // gönderim sonrası uyarısı kendiliğinden silinen form
+      return LOGOUT + FORM.replace('action="/submit"', 'action="/submit-flash"');
     case '/submit-early': // başarı işareti gönderimden ÖNCE de sayfada
       return LOGOUT + THANKS + FORM;
     case '/submit-early-dup': // başarı işareti hazır + alana yazılınca ürün adresini taşıyan "kayıtlı mı?" isteği
@@ -181,6 +185,35 @@ beforeAll(async () => {
       if (pathname === '/beacon' && req.method === 'POST') {
         received.beacons++;
         return send(204, '');
+      }
+      if (pathname === '/submit-toast' && req.method === 'POST') {
+        // İleti sayfa çizildikten SONRA (JS ile) belirir ve kısa sürede silinir: ilk okuma kaçırır, ikinci okuma yakalar.
+        received.submitPosts.push(Object.fromEntries(new URLSearchParams(body)));
+        return send(
+          200,
+          page(
+            LOGOUT +
+              FORM.replace('action="/submit"', 'action="/submit-toast"') +
+              `<script>
+                 setTimeout(() => document.body.insertAdjacentHTML('beforeend', '<div class="toast">Please verify your email first</div>'), 250);
+                 setTimeout(() => document.querySelectorAll('.toast').forEach((e) => e.remove()), 2500);
+               </script>`,
+          ),
+        );
+      }
+      if (pathname === '/submit-flash' && req.method === 'POST') {
+        // sideprojects gibi: aynı form, gönderilen değerlerle geri gelir ve bir uyarı birkaç saniye sonra KENDİLİĞİNDEN silinir.
+        received.submitPosts.push(Object.fromEntries(new URLSearchParams(body)));
+        return send(
+          200,
+          page(
+            LOGOUT +
+              `<div class="wrap"><div class="flash flash-error">Name is already taken</div></div>` +
+              `<div class="error" style="display:none">Hidden template error</div>` + // görünmeyen şablon metni notu kirletmemeli
+              FORM.replace('action="/submit"', 'action="/submit-flash"') +
+              `<script>setTimeout(() => document.querySelectorAll('.flash').forEach((e) => e.remove()), 700)</script>`,
+          ),
+        );
       }
       if (pathname === '/submit' && req.method === 'POST') {
         received.submitPosts.push(Object.fromEntries(new URLSearchParams(body)));
@@ -889,6 +922,47 @@ describe('submitListing — GERÇEK gönderim', () => {
     expect(retry.status).toBe('skipped_unverified'); // "zaten listelendi" DEĞİL: elle bakılmalı
     expect(retry.note).toMatch(/doğrulanamadı \(unconfirmed\)/);
     expect(received.submitPosts).toHaveLength(1); // ikinci POST yok
+    ledger.close();
+  }, 120_000);
+
+  it('gönderim sonrası kendiliğinden silinen uyarı (flash) YAKALANIR ve unconfirmed notuna yazılır', async () => {
+    // Gerçek vaka (sideprojects): sayfa gönderimden sonra aynı formla döndü, uyarı birkaç saniyede silindi; 15 sn'lik
+    // başarı beklemesi bitince kanıtta hiçbir şey kalmamıştı ve nedeni bilinemedi.
+    await writeConfig('fixture-flash', { listingUrl: `${base}/submit-flash`, success: { anyOf: ['#hic-gorunmeyen'] } });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-flash');
+    await approve();
+
+    const result = await submitListing('fixture-flash', live(ledger));
+    expect(result.status).toBe('unconfirmed');
+    expect(result.note).toContain('Name is already taken');
+    expect(result.note).toMatch(/Sayfa uyarısı/);
+    expect(result.note).not.toContain('Hidden template error'); // yalnızca GÖRÜNEN uyarılar
+    expect(received.submitPosts).toHaveLength(1);
+    ledger.close();
+  }, 120_000);
+
+  it('gönderimden bir an SONRA çıkan (gecikmeli) toast da yakalanır', async () => {
+    await writeConfig('fixture-toast', { listingUrl: `${base}/submit-toast`, success: { anyOf: ['#hic-gorunmeyen'] } });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-toast');
+    await approve();
+
+    const result = await submitListing('fixture-toast', live(ledger));
+    expect(result.status).toBe('unconfirmed');
+    expect(result.note).toContain('Please verify your email first');
+    ledger.close();
+  }, 120_000);
+
+  it('uyarı yoksa unconfirmed notuna "Sayfa uyarısı" eklenmez (gürültü yok)', async () => {
+    await writeConfig('fixture-noflash', { success: { anyOf: ['#hic-gorunmeyen'] } });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-noflash');
+    await approve();
+
+    const result = await submitListing('fixture-noflash', live(ledger));
+    expect(result.status).toBe('unconfirmed');
+    expect(result.note).not.toMatch(/Sayfa uyarısı/);
     ledger.close();
   }, 120_000);
 
