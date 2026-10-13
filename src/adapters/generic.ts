@@ -117,8 +117,14 @@ async function untickMarketingBoxes(ctx: SignupContext): Promise<Array<{ text: s
       const marketingRe = new RegExp(marketing, 'i');
       const legalRe = new RegExp(legal, 'i');
       const out: Array<{ text: string; result: 'unticked' | 'stuck' }> = [];
-      for (const box of Array.from(document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))) {
+      const boxes = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'));
+      // Aynı adı paylaşan 3+ kutu bir SEÇİM GRUBUDUR (kategori/etiket seçici), izin kutusu değil: sideprojects'te bilerek
+      // işaretlenen "Marketing" KATEGORİSİ pazarlama izni sanılıp kaldırılmıştı.
+      const sameName = new Map<string, number>();
+      for (const b of boxes) if (b.name) sameName.set(b.name, (sameName.get(b.name) ?? 0) + 1);
+      for (const box of boxes) {
         if (!box.checked) continue;
+        if (box.name && (sameName.get(box.name) ?? 0) >= 3) continue;
         const labelText = Array.from(box.labels ?? []).map((l) => l.textContent ?? '').join(' ');
         const text = `${labelText} ${box.getAttribute('aria-label') ?? ''} ${labelText ? '' : (box.parentElement?.textContent ?? '')}`.replace(/\s+/g, ' ').trim().slice(0, 200);
         if (!marketingRe.test(text) || legalRe.test(text)) continue;

@@ -81,6 +81,32 @@ describe('önceden işaretli pazarlama kutuları', () => {
     expect(await submitted()).toBe(false);
   }, 30_000);
 
+  it('aynı adı paylaşan kutular bir SEÇİM GRUBUDUR (kategori/etiket): bilerek işaretlenen "Marketing" kategorisi kaldırılmaz', async () => {
+    // Gerçek vaka (sideprojects): "Categories (up to 3)" kutularından biri "Marketing"; koruma onu pazarlama izni sanıp kaldırdı.
+    await page.setContent(`
+      <label><input type="checkbox" name="categories" value="ai" checked>AI</label>
+      <label><input type="checkbox" name="categories" value="dev">Developer tools</label>
+      <label><input type="checkbox" name="categories" value="marketing" checked>Marketing</label>
+      <label><input type="checkbox" name="categories" value="writing">Writing</label>
+      <p><input type="checkbox" id="optin" name="optin" checked><label for="optin">Subscribe to our newsletter</label></p>
+      <button id="submit" type="button">Launch</button>`);
+    const site = config([{ type: 'click', selector: '#submit' }]);
+    await runSteps(context(site, false), site.steps);
+    const state = await page.evaluate(() => Object.fromEntries(Array.from(document.querySelectorAll<HTMLInputElement>('input[type=checkbox]')).map((i) => [i.getAttribute('value') ?? i.id, i.checked])));
+    expect(state).toMatchObject({ ai: true, marketing: true, dev: false, writing: false }); // seçimler olduğu gibi
+    expect(state.optin).toBe(false); // tek başına duran gerçek izin kutusu hâlâ kaldırılır (koruma kapanmadı)
+  }, 30_000);
+
+  it('iki kutuluk grup seçim grubu sayılmaz (yalnızca 3 ve üstü): tek bir ayrıntılı onay yine kaldırılır', async () => {
+    await page.setContent(`
+      <label><input type="checkbox" name="prefs" value="a" checked>Receive our newsletter</label>
+      <label><input type="checkbox" name="prefs" value="b" checked>Send me promotions</label>
+      <button id="submit" type="button">Join</button>`);
+    const site = config([{ type: 'click', selector: '#submit' }]);
+    await runSteps(context(site, false), site.steps);
+    expect(await page.evaluate(() => Array.from(document.querySelectorAll<HTMLInputElement>('input[type=checkbox]')).map((i) => i.checked))).toEqual([false, false]);
+  }, 30_000);
+
   it('pazarlama kutusu olmayan sayfada hiçbir şeyi değiştirmez', async () => {
     await page.setContent(`<input type="checkbox" id="t" checked><label for="t">I accept the terms</label><button id="submit" type="button">Join</button>`);
     const site = config([{ type: 'click', selector: '#submit' }]);
