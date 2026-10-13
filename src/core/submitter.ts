@@ -588,9 +588,12 @@ async function waitForLoginToSettle(page: Page, loginUrl: string, loggedInSelect
   await page.waitForTimeout(500); // yönlendirmeyi izleyen sayfanın kendi istekleri bitsin
 }
 
-/** Uyarı/başarı iletisi taşıyan yaygın öğeler (flash, toast, alert, form hataları). */
+/**
+ * Uyarı/başarı iletisi taşıyan yaygın öğeler (flash, toast, alert, form hataları). `.has-error .help-block`: Yii/Bootstrap 3 alan
+ * hatası (yanlış yazılmış doğrulama kodu "Verification Code is invalid." böyle gelir); hata olmayan `.help-block` yardım metni alınmaz.
+ */
 const NOTICE_SELECTORS =
-  '[role="alert"], [role="status"], [aria-live="assertive"], .flash, .alert, .toast, .notice, .message, .error, .errors, .errorlist, .form-error, .invalid-feedback, .help.is-danger, [class*="flash"], [class*="toast"], [class*="snackbar"]';
+  '[role="alert"], [role="status"], [aria-live="assertive"], .flash, .alert, .toast, .notice, .message, .error, .errors, .errorlist, .form-error, .invalid-feedback, .has-error .help-block, .help.is-danger, [class*="flash"], [class*="toast"], [class*="snackbar"]';
 
 /**
  * Sayfada şu an GÖRÜNEN uyarı metinleri. Siteler gönderim sonucunu (başarı ya da hata) birkaç saniye gösterip siliyor

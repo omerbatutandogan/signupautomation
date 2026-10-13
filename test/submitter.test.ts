@@ -94,6 +94,8 @@ function listingPage(path: string): string | null {
       );
     case '/submit-toast': // gönderim sonrası GECİKMELİ çıkan ve silinen toast
       return LOGOUT + FORM.replace('action="/submit"', 'action="/submit-toast"');
+    case '/submit-yii-error': // Yii/Bootstrap: alan hatası ".has-error .help-block" içinde (1look4 ailesi: yanlış yazılmış doğrulama kodu)
+      return LOGOUT + FORM.replace('action="/submit"', 'action="/submit-yii-error"');
     case '/submit-flash': // gönderim sonrası uyarısı kendiliğinden silinen form
       return LOGOUT + FORM.replace('action="/submit"', 'action="/submit-flash"');
     case '/submit-early': // başarı işareti gönderimden ÖNCE de sayfada
@@ -213,6 +215,19 @@ beforeAll(async () => {
                  setTimeout(() => document.body.insertAdjacentHTML('beforeend', '<div class="toast">Please verify your email first</div>'), 250);
                  setTimeout(() => document.querySelectorAll('.toast').forEach((e) => e.remove()), 2500);
                </script>`,
+          ),
+        );
+      }
+      if (pathname === '/submit-yii-error' && req.method === 'POST') {
+        received.submitPosts.push(Object.fromEntries(new URLSearchParams(body)));
+        return send(
+          200,
+          page(
+            LOGOUT +
+              `<form method="post" action="/submit-yii-error"><input name="site"><textarea name="desc"></textarea>
+                 <div class="form-group has-error"><input name="code"><div class="help-block">Verification Code is invalid.</div></div>
+                 <div class="form-group"><div class="help-block">Letters are not case sensitive.</div></div>
+                 <button id="send" type="submit">Submit</button></form>`,
           ),
         );
       }
@@ -975,6 +990,19 @@ describe('submitListing — GERÇEK gönderim', () => {
     expect(result.note).toMatch(/Sayfa uyarısı/);
     expect(result.note).not.toContain('Hidden template error'); // yalnızca GÖRÜNEN uyarılar
     expect(received.submitPosts).toHaveLength(1);
+    ledger.close();
+  }, 120_000);
+
+  it('Yii/Bootstrap alan hatası (".has-error .help-block", ör. yanlış yazılmış doğrulama kodu) YAKALANIR; hata olmayan yardım metni değil', async () => {
+    await writeConfig('fixture-yii-error', { listingUrl: `${base}/submit-yii-error`, success: { anyOf: ['#hic-gorunmeyen'] } });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-yii-error');
+    await approve();
+
+    const result = await submitListing('fixture-yii-error', live(ledger));
+    expect(result.status).toBe('unconfirmed');
+    expect(result.note).toContain('Verification Code is invalid.');
+    expect(result.note).not.toContain('Letters are not case sensitive'); // hata olmayan yardım metni gürültü
     ledger.close();
   }, 120_000);
 
