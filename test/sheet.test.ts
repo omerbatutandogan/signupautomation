@@ -61,6 +61,32 @@ describe('siteIdFromWebsite', () => {
   it('büyük harfleri küçültür', () => {
     expect(siteIdFromWebsite('AlternativeTo.net')).toBe('alternativeto');
   });
+
+  it('ikili ülke uzantısında (co.uk, com.au…) SİTE adı anlamlı etiket olur, uzantı değil', () => {
+    // Gerçek vaka: Sheet'te 33 farklı .co.uk ve 33 farklı .com.au sitesi (toplam 88) "co-uk", "com-au"… gibi
+    // sekiz id'ye çöküyordu; her id'nin yalnızca ilk sitesi taranıyor, kalanı hiç görülmüyordu.
+    expect(siteIdFromWebsite('https://www.freeindex.co.uk/signup.htm')).toBe('freeindex-uk');
+    expect(siteIdFromWebsite('pcspecialist.co.uk')).toBe('pcspecialist-uk');
+    expect(siteIdFromWebsite('www.wordofmouth.com.au')).toBe('wordofmouth-au');
+    expect(siteIdFromWebsite('hotfrog.co.nz')).toBe('hotfrog-nz');
+    expect(siteIdFromWebsite('hotfrog.co.za')).toBe('hotfrog-za');
+    expect(siteIdFromWebsite('hotfrog.com.mx')).toBe('hotfrog-mx');
+    expect(siteIdFromWebsite('www.misterwhat.com.br')).toBe('misterwhat-br');
+    expect(siteIdFromWebsite('forum.audio.com.pl')).toBe('audio-pl'); // alt alan adı varsa da site adı seçilir
+    expect(siteIdFromWebsite('fyi.org.nz')).toBe('fyi-nz');
+  });
+
+  it('farklı .co.uk / .com.au siteleri artık aynı id\'ye ÇÖKMEZ', () => {
+    const ids = ['theloop.com.au', 'homeone.com.au', 'whatdoido.com.au', 'petforums.co.uk', 'acorndomains.co.uk'].map(siteIdFromWebsite);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('ikili uzantı olmayan çok etiketli adresler değişmez', () => {
+    expect(siteIdFromWebsite('blog.wordpress.com')).toBe('wordpress');
+    expect(siteIdFromWebsite('mail.example.org')).toBe('example');
+    expect(siteIdFromWebsite('docs.something.io')).toBe('something');
+    expect(siteIdFromWebsite('portal.10words.io')).toBe('10words');
+  });
 });
 
 describe('columnLetter', () => {

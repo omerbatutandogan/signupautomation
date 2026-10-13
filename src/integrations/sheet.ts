@@ -110,6 +110,9 @@ const GENERIC_TLDS = new Set([
   'xyz',
 ]);
 
+/** Ülke uzantısından önce gelen birinci düzey etiketler (co.uk, com.au, org.nz, ac.jp…): mail-parse'taki kümeyle aynı. */
+const SECOND_LEVEL = new Set(['co', 'com', 'net', 'org', 'gov', 'edu', 'ac']);
+
 export function siteIdFromWebsite(website: string): string {
   const host = website
     .replace(/^https?:\/\//i, '')
@@ -120,7 +123,11 @@ export function siteIdFromWebsite(website: string): string {
   // İlk etiketi al: "portal.10words.io" → "10words" değil, "portal" olurdu;
   // bu yüzden eTLD'yi atıp en anlamlı etiketi seçiyoruz.
   const labels = host.split('.');
-  const meaningful = labels.length > 2 ? labels[labels.length - 2] : labels[0];
+  // İkili ülke uzantısı ("freeindex.co.uk"): etkin uzantı son İKİ etiket; anlamlı etiket ondan öncekidir.
+  // (Eskiden "co" seçiliyor ve 88 farklı site "co-uk", "com-au"… sekiz id'ye çöküyordu.)
+  const twoLevel =
+    labels.length >= 3 && SECOND_LEVEL.has(labels[labels.length - 2] ?? '') && /^[a-z]{2}$/.test(labels[labels.length - 1] ?? '');
+  const meaningful = twoLevel ? labels[labels.length - 3] : labels.length > 2 ? labels[labels.length - 2] : labels[0];
   const base = (meaningful ?? '').replace(/[^a-z0-9-]/g, '');
   if (!base) return '';
 
