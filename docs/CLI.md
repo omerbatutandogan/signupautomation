@@ -121,6 +121,15 @@ Komut, o hesabı "tamamlandı" yapar.
 - Kimlik kaydı (`credentials`) yoksa reddeder (`❌ … hesap sistemde açılmamış`; çıkış 1).
 - Zaten tamamlanmışsa bir şey yapmaz (`ℹ️`).
 
+### `reject-submission <siteId> --note "<kanıt>"` — "gönderim yayınlanmadı" kaydı
+
+Sonucu doğrulanamayan (`unconfirmed`) bir gönderimin **gerçekte yayınlanmadığını** insan kanıtıyla işler: örn. site gönderimi bir uyarıyla reddetti ve hesapta ürün yok.
+Satır `failed` olur; sonraki `submit --live` `--force` istemez ve Sheet "Gönderildi" demez.
+
+- `--note` **zorunlu**, en az 10 karakter: ürünün sitede oluşmadığını neyle doğruladınız (sitenin uyarı metni, hesap sayfası…). Nota `elle doğrulandı, YAYINLANMADI:` öneki eklenir.
+- Yalnızca **gerçek** gönderimleri ve `completed`/`failed` dışındaki durumları (`unconfirmed`, süreç ölmüş `running`) değiştirir. Gerçekten listelenmiş kayda ve dry-run satırlarına **dokunmaz**; günlük sayaç değişmez.
+- Gönderim gerçekte yayınlanmış olabilecekken kullanmayın: çift yayının önünü açar. Çıkış kodu: işlendiyse 0, doğrulanamamış gönderim yoksa 1.
+
 ### `unlock <siteId>` — takılı kilidi temizle
 
 Çalıştırma kilitleri süre dolunca (`LOCK_TTL_MS`, varsayılan 45 dk) kendiliğinden temizlenir (ledger her açılışta eskimiş kilitleri siler). Süre dolmadan

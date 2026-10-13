@@ -329,6 +329,23 @@ export class Ledger {
     return row ?? null;
   }
 
+  /**
+   * Sonucu doğrulanamayan GERÇEK gönderimleri (`unconfirmed`, süreç ölmüş `running`, bilinmeyen durumlar) İNSAN kanıtıyla
+   * "yayınlanmadı" olarak işler. Örn. site gönderimi bir uyarıyla reddetti ("That launch date is full") ve ürün hiç
+   * oluşmadı: satır `failed` olur, sonraki gönderim `--force` gerektirmez ve Sheet "Gönderildi" demez.
+   *
+   * Gerçekten listelenmiş (`completed`) kayda ve dry-run satırlarına DOKUNMAZ; günlük sayaç değişmez (denemeler zaten
+   * sayıldı). Yalnızca insan kanıtıyla çağrılmalı: yanlış kullanım çift yayının önünü açar.
+   * @returns değiştirilen satır sayısı (0 = doğrulanamamış gönderim yok)
+   */
+  rejectSubmission(accountKey: SiteId, note: string): number {
+    return this.db
+      .prepare(
+        "UPDATE submissions SET status = 'failed', note = ?, finished_at = COALESCE(finished_at, ?) WHERE account_key = ? AND dry_run = 0 AND status NOT IN ('completed', 'failed')",
+      )
+      .run(note, Date.now(), accountKey).changes;
+  }
+
   /** Bugün başlatılan GERÇEK gönderim sayısı (kayıtlarla aynı günlük hız sınırı mantığı). */
   countLiveSubmissionsToday(): number {
     const startOfDay = new Date();

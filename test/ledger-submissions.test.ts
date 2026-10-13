@@ -105,3 +105,61 @@ describe('countLiveSubmissionsToday', () => {
     expect(ledger.countLiveSubmissionsToday()).toBe(2);
   });
 });
+
+
+/**
+ * Sonucu doğrulanamayan gönderimi İNSAN kanıtıyla "yayınlanmadı" yapmak (reject-submission): site gönderimi bir uyarıyla
+ * reddetti ve ürün hiç oluşmadı. Satır 'failed' olur; sonraki gönderim --force gerektirmez ve Sheet "Gönderildi" demez.
+ */
+describe('rejectSubmission', () => {
+  const send = (key: string, status: string, dry = false) => {
+    const id = ledger.startSubmission(key, `run-${key}-${status}`, dry);
+    ledger.finishSubmission(id, status, 'özgün not', status === 'completed' ? 'https://x.example/p' : undefined);
+  };
+
+  it('doğrulanamayan (unconfirmed) gerçek gönderimi failed yapar; yeniden denemenin önü açılır', () => {
+    send('site-a', 'unconfirmed');
+    expect(ledger.liveSubmission('site-a')?.status).toBe('unconfirmed'); // önce: engelli
+
+    expect(ledger.rejectSubmission('site-a', 'elle doğrulandı: site reddetti')).toBe(1);
+    expect(ledger.liveSubmission('site-a')).toBeNull(); // sonra: engel yok
+    expect(ledger.recentSubmissions(5)[0]).toMatchObject({ status: 'failed', note: 'elle doğrulandı: site reddetti' });
+  });
+
+  it('süreç ölmüş yarım (running) kaydı da kapatır', () => {
+    ledger.startSubmission('site-b', 'run-1', false); // 'running' kalır
+    expect(ledger.liveSubmission('site-b')?.status).toBe('running');
+    expect(ledger.rejectSubmission('site-b', 'elle doğrulandı: hiçbir şey oluşmadı')).toBe(1);
+    expect(ledger.liveSubmission('site-b')).toBeNull();
+  });
+
+  it('gerçekten listelenmiş (completed) gönderime ve dry-run satırlarına DOKUNMAZ', () => {
+    send('site-c', 'completed');
+    send('site-c', 'completed', true); // dry-run
+    expect(ledger.rejectSubmission('site-c', 'elle doğrulandı: x')).toBe(0);
+    expect(ledger.liveSubmission('site-c')?.status).toBe('completed');
+    expect(ledger.recentSubmissions(5).map((r) => r.status)).toEqual(['completed', 'completed']);
+  });
+
+  it('dry-run satırları durumları ne olursa olsun korunur (yalnızca GERÇEK gönderimler işlenir)', () => {
+    send('site-g', 'manual', true); // dry-run denetimi başarısız
+    ledger.startSubmission('site-g', 'run-dry', true); // yarım kalmış dry-run ('running')
+    expect(ledger.rejectSubmission('site-g', 'elle doğrulandı: x')).toBe(0);
+    expect(ledger.recentSubmissions(5).map((r) => r.status).sort()).toEqual(['manual', 'running']);
+  });
+
+  it('yalnızca verilen hesabı etkiler; yoksa 0 döner', () => {
+    send('site-d', 'unconfirmed');
+    send('site-e', 'unconfirmed');
+    expect(ledger.rejectSubmission('site-d', 'elle doğrulandı: x')).toBe(1);
+    expect(ledger.liveSubmission('site-e')?.status).toBe('unconfirmed');
+    expect(ledger.rejectSubmission('yok', 'elle doğrulandı: x')).toBe(0);
+  });
+
+  it('günlük gerçek listeleme sayacını DEĞİŞTİRMEZ (başlatılmış denemeler zaten sayıldı)', () => {
+    send('site-f', 'unconfirmed');
+    const before = ledger.countLiveSubmissionsToday();
+    ledger.rejectSubmission('site-f', 'elle doğrulandı: x');
+    expect(ledger.countLiveSubmissionsToday()).toBe(before);
+  });
+});

@@ -66,6 +66,7 @@ Komutlar:
                           (etkileşimli terminal + yazılı onay ister; içerik değişirse geçersiz olur)
   list                    Tanımlı site config'lerini listele
   adopt-account <siteId> --note "<kanıt>"  Gerçekte AÇIK ama yanlış kaydedilmiş hesabı tamamlandı yap
+  reject-submission <siteId> --note "<kanıt>"  Sonucu doğrulanamayan gönderimin gerçekte YAYINLANMADIĞINI işle (yeniden denenebilir)
   unlock <siteId>         Takılı kilidi temizle
   password <siteId>       Türetilmiş şifreyi yazdır
   check-gmail             Gmail bağlantısını doğrula
@@ -332,6 +333,29 @@ function cmdAdoptAccount(siteId: string, note: string | undefined): number {
     }[result];
     console.log(message);
     return result === 'no_credentials' ? 1 : 0;
+  } finally {
+    ledger.close();
+  }
+}
+
+/**
+ * Sonucu doğrulanamayan (`unconfirmed`) gönderimin gerçekte YAYINLANMADIĞINI işler (ör. site "tarih dolu" diyerek reddetti).
+ * Kanıt notu ZORUNLU: hesapta ürünün olmadığını neyle doğruladığın. Gerçekten listelenmiş kayda dokunmaz.
+ */
+function cmdRejectSubmission(accountKeyValue: string, note: string | undefined): number {
+  if (!note || note.trim().length < 10) {
+    console.error('--note "<kanıt>" gerekli (en az 10 karakter): ürünün sitede oluşmadığını neyle doğruladın?');
+    return 1;
+  }
+  const ledger = new Ledger();
+  try {
+    const changed = ledger.rejectSubmission(accountKeyValue, `elle doğrulandı, YAYINLANMADI: ${note.trim()}`);
+    if (changed === 0) {
+      console.log(`ℹ️  ${accountKeyValue}: doğrulanamamış gerçek gönderim yok, değişiklik yapılmadı.`);
+      return 1;
+    }
+    console.log(`✅ ${accountKeyValue}: ${changed} gönderim "yayınlanmadı (failed)" olarak işlendi; yeniden denenebilir.`);
+    return 0;
   } finally {
     ledger.close();
   }
@@ -665,6 +689,17 @@ async function main(): Promise<void> {
       }
       const noteIdx = process.argv.indexOf('--note');
       code = cmdAdoptAccount(accountKey(productId, siteId), noteIdx >= 0 ? process.argv[noteIdx + 1] : undefined);
+      break;
+    }
+    case 'reject-submission': {
+      const siteId = positional[0];
+      if (!siteId) {
+        console.error('Site id gerekli.');
+        code = 1;
+        break;
+      }
+      const noteIdx = process.argv.indexOf('--note');
+      code = cmdRejectSubmission(accountKey(productId, siteId), noteIdx >= 0 ? process.argv[noteIdx + 1] : undefined);
       break;
     }
     case 'unlock': {
