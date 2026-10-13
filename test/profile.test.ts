@@ -48,6 +48,13 @@ describe('iletişim unvanı ve yasal ad', () => {
     expect(resolveField('role', profile, { email: 'x@example.com', username: 'x', password: 'p', passwordVersion: 1 })).toBeNull();
   });
 
+  it('productTitle: "<ürün adı> — <slogan>" tek satırlık başlık verir (liste siteleri için)', async () => {
+    const profile = await loadProfile('geo-new');
+    const title = resolveField('productTitle', profile, { email: 'x@example.com', username: 'x', password: 'p', passwordVersion: 1 });
+    expect(title).toBe(`${profile.companyName} — ${profile.tagline}`);
+    expect(title).toMatch(/^geo\.new — /);
+  });
+
   it('unvan verilirse formda kullanılır', async () => {
     const raw = await baseProfile();
     const profile = parseProfile({ ...raw, contact: { ...(raw.contact as object), role: 'Developer' } }, 'acme');

@@ -96,6 +96,7 @@ export type FieldName =
   | 'github'
   | 'pricing'
   | 'foundedYear'
+  | 'productTitle'
   | 'terms';
 
 // ── Doğrulama ─────────────────────────────────────────────────────────────
@@ -211,6 +212,7 @@ export type StepType =
   | 'expect'
   | 'captchaGate'
   | 'humanPause'
+  | 'humanInput'
   | 'custom';
 
 export interface StepBase {
@@ -261,6 +263,8 @@ export interface Step extends StepBase {
   file?: string;
   minMs?: number;
   maxMs?: number;
+  /** humanInput: alanın dolu sayılması için kırpılmış en az karakter sayısı. */
+  minLength?: number;
   handler?: string;
 }
 

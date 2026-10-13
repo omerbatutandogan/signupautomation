@@ -89,6 +89,8 @@ export function resolveField(
       return profile.pricing;
     case 'foundedYear':
       return String(profile.foundedYear);
+    case 'productTitle':
+      return `${profile.companyName} — ${profile.tagline}`;
     case 'category':
       return profile.category.primary;
     case 'description':

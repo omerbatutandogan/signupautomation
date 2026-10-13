@@ -10,6 +10,7 @@ import type { Locator } from 'playwright';
 import {
   classifyPageText,
   isAlreadyExists,
+  ManualReviewError,
   PermanentError,
   TransientError,
   urlChangedAfterSubmit,
@@ -34,6 +35,8 @@ import type {
 } from '../core/types.js';
 
 const DEFAULT_STEP_TIMEOUT = 10_000;
+/** humanInput adımında insanı bekleme süresinin varsayılanı. */
+const HUMAN_INPUT_TIMEOUT_MS = 300_000;
 
 /** Adımın `when` koşulu sağlanıyor mu? */
 async function shouldRun(ctx: SignupContext, step: Step): Promise<boolean> {
@@ -450,6 +453,36 @@ async function runStep(ctx: SignupContext, step: Step, index: number, hooks: Ste
     case 'humanPause': {
       await ctx.page.waitForTimeout(randInt(step.minMs ?? 800, step.maxMs ?? 2500));
       return;
+    }
+
+    case 'humanInput': {
+      // Sistemin çözemediği alan (görsel doğrulama kodu gibi): İNSAN doldurur, sistem alan dolana kadar bekler.
+      // Dry-run'da beklenmez (gözetimsiz toplu doğrulama takılmasın); gönderim zaten yapılmıyor.
+      if (ctx.dryRun) {
+        log.info({ selector: step.selector }, 'DRY-RUN: insan girişi beklenmedi');
+        return;
+      }
+      // Alanı bulma süresi kısa tutulur: `timeoutMs` burada İNSANI bekleme süresidir.
+      const locator = await tryLocate(ctx, { ...step, timeoutMs: undefined }, DEFAULT_STEP_TIMEOUT, log);
+      if (!locator) return;
+
+      const need = step.minLength ?? 1;
+      const waitMs = step.timeoutMs ?? HUMAN_INPUT_TIMEOUT_MS;
+      await ctx.page.bringToFront().catch(() => undefined);
+      log.warn(
+        { selector: step.selector, minLength: need, waitMinutes: Math.round(waitMs / 60_000) },
+        '🙋 İNSAN GİRİŞİ GEREKİYOR — tarayıcıdaki alanı (ör. görsel doğrulama kodu) siz doldurun; akış kendiliğinden devam edecek',
+      );
+      const deadline = Date.now() + waitMs;
+      while (Date.now() < deadline) {
+        const value = await locator.inputValue().catch(() => '');
+        if (value.trim().length >= need) {
+          log.info('İnsan girişi alındı, devam ediliyor');
+          return;
+        }
+        await ctx.page.waitForTimeout(500);
+      }
+      throw new ManualReviewError(`İnsan girişi beklenen alan zamanında doldurulmadı: ${step.selector}`, { selector: step.selector });
     }
 
     case 'custom': {

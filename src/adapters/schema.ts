@@ -28,6 +28,8 @@ export const FieldNameSchema = z.enum([
   'github',
   'pricing',
   'foundedYear',
+  /** "<ürün adı> — <slogan>": liste sitelerinin tek satırlık başlık alanları için. */
+  'productTitle',
   'terms',
 ]);
 
@@ -95,6 +97,12 @@ const StepUnion = z.discriminatedUnion('type', [
     maxMs: z.number().int().positive().optional(),
     ...common,
   }),
+
+  /**
+   * İNSANIN dolduracağı alan (ör. görsel doğrulama kodu): sistem çözmeye çalışmaz, alan dolana kadar bekler ve akış sürer.
+   * `minLength` (varsayılan 1) kırpılmış karakter sayısıdır; `timeoutMs` bu adımda insanı bekleme süresidir (varsayılan 5 dk).
+   */
+  z.object({ type: z.literal('humanInput'), selector: z.string().min(1), minLength: z.number().int().positive().optional(), ...common }),
 
   /** Faz 1'de şemada var ama uygulanmıyor — override'lar için ayrılmış. */
   z.object({ type: z.literal('custom'), handler: z.string().min(1), ...common }),
