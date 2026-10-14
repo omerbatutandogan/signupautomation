@@ -133,6 +133,94 @@ describe('humanInput', () => {
     }
   }, 30_000);
 
+  describe('insan formu kendisi gönderirse (kodu yazıp Enter\'a / Gönder\'e basarsa)', () => {
+    const FORM_PAGE = '<form method="post" action="/create"><input id="code" name="code"><button id="go" type="submit">Submit</button></form>';
+
+    /** fx.example'ı yerelde sunar: GET → form, POST → yavaş yanıt (gezinme sürerken insan beklemesi bitmemeli). */
+    async function serveForm(posts: string[], beaconScript = '') {
+      await page.route('http://fx.example/**', async (route) => {
+        const request = route.request();
+        if (request.method() === 'POST') {
+          posts.push(new URL(request.url()).pathname);
+          if (new URL(request.url()).pathname === '/beacon') return route.fulfill({ status: 204, body: '' });
+          await new Promise((resolve) => setTimeout(resolve, 700));
+          return route.fulfill({ status: 200, contentType: 'text/html', body: '<p id="done">kaydedildi</p>' });
+        }
+        return route.fulfill({ status: 200, contentType: 'text/html', body: FORM_PAGE + beaconScript });
+      });
+    }
+
+    it('ikinci tıklama YAPILMAZ (çift gönderim yok), gezinme bitince akış sürer', async () => {
+      // Gerçek vaka (coolpot, 14 Ekim): insan kodu yazıp formu kendisi gönderdi; sistem alan kaybolunca yanlış sayfada gönder
+      // düğmesi aradı, 10 sn sonra hata verip gönderimi "unconfirmed" yazdı.
+      const posts: string[] = [];
+      await serveForm(posts);
+      try {
+        await page.goto('http://fx.example/form');
+        const site = config([
+          { type: 'humanInput', selector: '#code', minLength: 3, settleMs: 5_000, timeoutMs: 20_000 }, // oturma süresi uzun: akışı bitiren o OLAMAZ
+          { type: 'click', selector: '#go' },
+        ]);
+        setTimeout(() => void page.fill('#code', 'abc').then(() => page.press('#code', 'Enter')), 800);
+        const started = Date.now();
+        await runSteps(context(site, false), site.steps);
+
+        expect(posts).toEqual(['/create']); // yalnızca insanın gönderimi; sistemin tıklaması atlandı
+        expect(page.url()).toBe('http://fx.example/create'); // gezinme bitmeden dönmedi
+        expect(await page.locator('#done').isVisible()).toBe(true);
+        expect(Date.now() - started).toBeLessThan(5_000); // oturma süresini beklemedi
+      } finally {
+        await page.unroute('http://fx.example/**');
+      }
+    }, 40_000);
+
+    it('sayfanın kendi arka plan POST\'ları (analitik) "insan gönderdi" SAYILMAZ: sistem kendi tıklamasını yapar', async () => {
+      const posts: string[] = [];
+      await serveForm(posts, `<script>setTimeout(() => fetch('/beacon', { method: 'POST', body: 'x' }), 300)</script>`);
+      try {
+        await page.goto('http://fx.example/form');
+        const site = config([
+          { type: 'humanInput', selector: '#code', minLength: 3, settleMs: 300, timeoutMs: 20_000 },
+          { type: 'click', selector: '#go' },
+        ]);
+        setTimeout(() => void page.fill('#code', 'abc'), 900); // insan yazar ama GÖNDERMEZ
+        await runSteps(context(site, false), site.steps);
+
+        expect(posts.filter((path) => path === '/beacon')).toHaveLength(1); // arka plan isteği gerçekten çıktı
+        expect(posts.filter((path) => path === '/create')).toHaveLength(1); // sistemin kendi tıklaması çalıştı
+      } finally {
+        await page.unroute('http://fx.example/**');
+      }
+    }, 40_000);
+  });
+
+  describe('GET gezinmesi (yeniden yükleme) insan gönderimi sayılmaz', () => {
+    it('reklam/sayfa yeniden yüklenirse sistem beklemeye devam eder ve kendi tıklamasını yapar', async () => {
+      const posts: string[] = [];
+      await page.route('http://fx.example/**', async (route) => {
+        const request = route.request();
+        if (request.method() === 'POST') {
+          posts.push(new URL(request.url()).pathname);
+          return route.fulfill({ status: 200, contentType: 'text/html', body: '<p id="done">kaydedildi</p>' });
+        }
+        return route.fulfill({ status: 200, contentType: 'text/html', body: '<form method="post" action="/create"><input id="code" name="code"><button id="go" type="submit">Submit</button></form>' });
+      });
+      try {
+        await page.goto('http://fx.example/form');
+        const site = config([
+          { type: 'humanInput', selector: '#code', minLength: 3, settleMs: 300, timeoutMs: 20_000 },
+          { type: 'click', selector: '#go' },
+        ]);
+        setTimeout(() => void page.reload(), 700); // sayfa kendiliğinden yeniden yüklenir (GET gezinme)
+        setTimeout(() => void page.fill('#code', 'abc').catch(() => undefined), 2_000); // insan yeniden yüklemeden SONRA yazar
+        await runSteps(context(site, false), site.steps);
+        expect(posts).toEqual(['/create']); // sistem kendi tıklamasını yaptı (yeniden yükleme "insan gönderdi" sayılmadı)
+      } finally {
+        await page.unroute('http://fx.example/**');
+      }
+    }, 40_000);
+  });
+
   it('alan sayfadan kaybolursa (insan kendisi gönderdi ya da sayfa değişti) beklemeyi bırakır: hata yok, sonraki adım kendi koşuluyla karar verir', async () => {
     await page.setContent(PAGE);
     const site = config([

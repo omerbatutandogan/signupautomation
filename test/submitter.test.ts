@@ -64,7 +64,7 @@ let server: Server;
 let browser: Browser;
 let base = '';
 let port = 0;
-const received = { loginPosts: 0, flakyLoginPosts: 0, beacons: 0, sameSiteBeacons: 0, dupChecks: 0, submitPosts: [] as Array<Record<string, string>>, twoStepNext: 0, twoStepCreates: [] as Array<Record<string, string>> };
+const received = { loginPosts: 0, flakyLoginPosts: 0, beacons: 0, sameSiteBeacons: 0, dupChecks: 0, submitPosts: [] as Array<Record<string, string>>, twoStepNext: 0, twoStepCreates: [] as Array<Record<string, string>>, humanOnly: [] as Array<Record<string, string>> };
 let submissionsDir = '';
 let approvalDir = '';
 let assetsDir = '';
@@ -94,6 +94,8 @@ function listingPage(path: string): string | null {
       );
     case '/submit-toast': // gönderim sonrası GECİKMELİ çıkan ve silinen toast
       return LOGOUT + FORM.replace('action="/submit"', 'action="/submit-toast"');
+    case '/human-only': // yalnızca doğrulama kodu isteyen form: config'te tıklama yok, gönderimi insan yapar
+      return LOGOUT + `<form method="post" action="/human-only"><input name="code" id="code"><button id="go" type="submit">Go</button></form>`;
     case '/submit-slow-nav': // 1look4 gibi: tıklama hemen döner, form ~300 ms sonra gönderilir, sunucu ~1,3 sn sonra yanıtlar
       return (
         LOGOUT +
@@ -274,6 +276,10 @@ beforeAll(async () => {
         );
         return;
       }
+      if (pathname === '/human-only' && req.method === 'POST') {
+        received.humanOnly.push(Object.fromEntries(new URLSearchParams(body)));
+        return send(200, page(THANKS));
+      }
       if (pathname === '/two-step/create' && req.method === 'POST') {
         received.twoStepCreates.push(Object.fromEntries(new URLSearchParams(body)));
         return send(200, page(THANKS));
@@ -383,6 +389,7 @@ beforeEach(async () => {
   received.submitPosts.length = 0;
   received.twoStepNext = 0;
   received.twoStepCreates.length = 0;
+  received.humanOnly.length = 0;
   launches = 0;
   lastLaunch = null;
   humanCaptcha.handler = async () => {
@@ -1275,6 +1282,60 @@ describe('submitListing — GERÇEK gönderim', () => {
     expect(create.title).toBe(`${profile.companyName} — ${profile.tagline}`); // alanlar bizim (onaylı) metinle dolu
     expect(create.desc!.length).toBeGreaterThan(20);
     expect(create.code).toBe('x7k2p'); // insanın yazdığı kod
+    ledger.close();
+  }, 90_000);
+
+  /** İnsan taklidi: kod alanı görününce kodu yazar ve Enter'a basar (formu KENDİSİ gönderir). */
+  const humanTypesAndSubmits = (code: string): SubmitOptions['launch'] => async () => {
+    const ctx = await browser.newContext();
+    const p = await ctx.newPage();
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          if (!(await p.locator('#code').isVisible())) return;
+          clearInterval(timer);
+          await p.waitForTimeout(500);
+          await p.fill('#code', code);
+          await p.press('#code', 'Enter');
+        } catch {
+          /* sayfa gezinirken */
+        }
+      })();
+    }, 200);
+    return { page: p, close: async () => { clearInterval(timer); await ctx.close(); } };
+  };
+
+  it('insan kodu yazıp formu KENDİSİ gönderirse (Enter): sistem ikinci kez göndermez, sonuç completed', async () => {
+    // Gerçek vaka (coolpot, 14 Ekim): gönderim yapılmıştı ama sistem alan kaybolunca yanlış sayfada gönder düğmesi aradı,
+    // 10 sn sonra hata verip "unconfirmed" yazdı. Gönder tıklaması burada KORUMASIZ (when yok): yalnızca bayrak onu durdurur.
+    const steps = twoStepSteps(15_000).map((step) => (step.type === 'click' && step.selector === '#create' ? { type: 'click', selector: '#create' } : step));
+    await writeConfig('fixture-human-submits', { listingUrl: `${base}/two-step`, steps });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-human-submits');
+    await approve();
+    const outcome = await submitListing('fixture-human-submits', live(ledger, { launch: humanTypesAndSubmits('x7k2p') }));
+
+    expect(outcome.status).toBe('completed');
+    expect(received.twoStepCreates).toHaveLength(1); // yalnızca insanın gönderimi: çift yayın yok
+    expect(received.twoStepCreates[0]!.code).toBe('x7k2p');
+    ledger.close();
+  }, 90_000);
+
+  it('yalnızca insanın gönderdiği form (config\'te tıklama yok): ağ izi gönderimi görür, "gönderilmedi" denmez', async () => {
+    await writeConfig('fixture-human-only', {
+      listingUrl: `${base}/human-only`,
+      steps: [
+        { type: 'goto', url: '{{signupUrl}}' },
+        { type: 'humanInput', selector: '#code', minLength: 3, settleMs: 600, timeoutMs: 20_000 },
+      ],
+    });
+    const ledger = new Ledger(':memory:');
+    withAccount(ledger, 'fixture-human-only');
+    await approve();
+    const outcome = await submitListing('fixture-human-only', live(ledger, { launch: humanTypesAndSubmits('abc') }));
+
+    expect(received.humanOnly).toEqual([{ code: 'abc' }]);
+    expect(outcome.status).toBe('completed'); // gönderimi ana çerçeve POST gezinmesi olarak ağ izi gördü (failed "gönderim yapılmadı" DEĞİL)
     ledger.close();
   }, 90_000);
 

@@ -6,7 +6,7 @@
  */
 
 import { isCheckboxLabelClick } from '../discovery/selectors.js';
-import type { Locator } from 'playwright';
+import type { Frame, Locator, Request } from 'playwright';
 import {
   classifyPageText,
   isAlreadyExists,
@@ -39,6 +39,8 @@ const DEFAULT_STEP_TIMEOUT = 10_000;
 const HUMAN_INPUT_TIMEOUT_MS = 300_000;
 /** humanInput: alan dolduktan sonra değerin değişmeden kalması gereken süre (insan yazmayı bitirsin). */
 const HUMAN_INPUT_SETTLE_MS = 2_000;
+/** humanInput: insanın başlattığı gönderimin sayfaya yansımasını (gezinme tamamlanması) bekleme sınırı. */
+const HUMAN_SUBMIT_NAVIGATION_MS = 20_000;
 
 /** `when` koşulunun ŞU AN sağlanıp sağlanmadığı (bekleme yok). */
 async function whenHolds(ctx: SignupContext, when: NonNullable<Step['when']>): Promise<boolean> {
@@ -284,6 +286,11 @@ async function runStep(ctx: SignupContext, step: Step, index: number, hooks: Ste
     }
 
     case 'click': {
+      // İnsan formu kendisi gönderdiyse (humanInput) bir tıklama daha çift gönderim olurdu; ayrıca gönder düğmesi artık sayfada yoktur.
+      if (ctx.humanSubmitted && !ctx.dryRun) {
+        log.info({ selector: step.selector }, 'İnsan formu kendisi gönderdi: tıklama atlandı (çift gönderim olmasın)');
+        return;
+      }
       const locator = await tryLocate(ctx, step, timeoutMs, log);
       if (!locator) return;
 
@@ -509,34 +516,66 @@ async function runStep(ctx: SignupContext, step: Step, index: number, hooks: Ste
       if (process.stderr.isTTY) process.stderr.write('\u0007');
       log.warn(
         { selector: step.selector, minLength: need, settleMs, waitMinutes: Math.round(waitMs / 60_000) },
-        "🙋 İNSAN GİRİŞİ GEREKİYOR — tarayıcıdaki alanı (ör. görsel doğrulama kodu) siz doldurun, yazmayı bitirince birkaç saniye bekleyin; Enter'a ya da Gönder'e BASMAYIN, akış kendiliğinden devam edecek",
+        "🙋 İNSAN GİRİŞİ GEREKİYOR — tarayıcıdaki alanı (ör. görsel doğrulama kodu) siz doldurun; yazmayı bitirince ~2 sn bekleyin, akış kendiliğinden gönderir (isterseniz Enter'a ya da Gönder'e kendiniz de basabilirsiniz)",
       );
-      // Alan `need` karaktere ulaşınca devam EDİLMEZ: insan hâlâ yazıyor olabilir (5-6 harflik kod 3. harfte gönderilirdi).
-      // Değer `settleMs` boyunca değişmeden kalınca insan bitirmiş sayılır.
-      const deadline = Date.now() + waitMs;
-      let seen = '';
-      let stableSince = 0;
-      while (Date.now() < deadline) {
-        // Alan sayfadan kaybolduysa (insan kendisi gönderdi ya da sayfa değişti) beklemenin anlamı kalmadı: sonraki adımlar
-        // kendi `when` koşuluyla karar verir; burada 5 dk takılmak yerine devam edilir.
-        if ((await locator.count().catch(() => 1)) === 0) {
-          log.warn({ selector: step.selector }, 'İnsan girişi alanı sayfadan kayboldu (sayfa değişti ya da insan kendisi gönderdi), devam ediliyor');
-          return;
+      // İnsan kodu yazınca Enter'a ya da Gönder'e basabilir (en doğal davranış; coolpot'ta öyle oldu). O gönderim bizim
+      // tıklamamızdan ÖNCE başlarsa bir tıklama daha çift gönderim olurdu. Ana çerçevede GET olmayan bir gezinme isteği (form
+      // gönderimi) başlarsa insan göndermiş sayılır; arka plan istekleri (analitik, fetch) gezinme isteği değildir.
+      const mainFrame = ctx.page.mainFrame();
+      let humanPosted = false;
+      let committed = false;
+      const onRequest = (request: Request): void => {
+        try {
+          if (request.isNavigationRequest() && request.frame() === mainFrame && request.method() !== 'GET') humanPosted = true;
+        } catch {
+          /* çerçevesi olmayan (service worker) istek: gezinme değil */
         }
-        const value = (await locator.inputValue({ timeout: 1_000 }).catch(() => '')).trim();
-        if (value.length >= need) {
-          if (value !== seen) {
-            seen = value;
-            stableSince = Date.now();
-          }
-          if (Date.now() - stableSince >= settleMs) {
-            log.info('İnsan girişi alındı, devam ediliyor');
+      };
+      const onNavigated = (frame: Frame): void => {
+        if (humanPosted && frame === mainFrame) committed = true;
+      };
+      ctx.page.on('request', onRequest);
+      ctx.page.on('framenavigated', onNavigated);
+      try {
+        // Alan `need` karaktere ulaşınca devam EDİLMEZ: insan hâlâ yazıyor olabilir (5-6 harflik kod 3. harfte gönderilirdi).
+        // Değer `settleMs` boyunca değişmeden kalınca insan bitirmiş sayılır.
+        const deadline = Date.now() + waitMs;
+        let seen = '';
+        let stableSince = 0;
+        while (Date.now() < deadline) {
+          if (humanPosted) {
+            ctx.humanSubmitted = true;
+            log.warn({ selector: step.selector }, 'İnsan formu kendisi gönderdi: sistem ikinci kez göndermeyecek, gezinmenin bitmesi bekleniyor');
+            // Sonraki adımların `when` koşulları ve başarı denetimi yeni sayfayı görsün: gezinme tamamlanana kadar bekle.
+            const navigationEnd = Date.now() + HUMAN_SUBMIT_NAVIGATION_MS;
+            while (!committed && Date.now() < navigationEnd) await ctx.page.waitForTimeout(100);
+            await ctx.page.waitForLoadState('domcontentloaded', { timeout: 15_000 }).catch(() => undefined);
             return;
           }
-        } else {
-          seen = '';
+          // Alan sayfadan kaybolduysa (sayfa başka bir yolla değişti) beklemenin anlamı kalmadı: sonraki adımlar kendi `when`
+          // koşuluyla karar verir; burada 5 dk takılmak yerine devam edilir.
+          if ((await locator.count().catch(() => 1)) === 0) {
+            log.warn({ selector: step.selector }, 'İnsan girişi alanı sayfadan kayboldu (sayfa değişti), devam ediliyor');
+            return;
+          }
+          const value = (await locator.inputValue({ timeout: 1_000 }).catch(() => '')).trim();
+          if (value.length >= need) {
+            if (value !== seen) {
+              seen = value;
+              stableSince = Date.now();
+            }
+            if (Date.now() - stableSince >= settleMs) {
+              log.info('İnsan girişi alındı, devam ediliyor');
+              return;
+            }
+          } else {
+            seen = '';
+          }
+          await ctx.page.waitForTimeout(250);
         }
-        await ctx.page.waitForTimeout(250);
+      } finally {
+        ctx.page.off('request', onRequest);
+        ctx.page.off('framenavigated', onNavigated);
       }
       throw new ManualReviewError(`İnsan girişi beklenen alan zamanında doldurulmadı: ${step.selector}`, { selector: step.selector });
     }

@@ -161,6 +161,11 @@ export interface SignupContext {
    * Telegram bildirimi gider, DOM izleyici otomatik çözülmeyi de yakalar.
    */
   requestHumanCaptcha(kind: CaptchaKind, screenshotPath: string): Promise<void>;
+  /**
+   * `humanInput` sırasında insan formu kendisi gönderdiyse (ana çerçevede POST gezinmesi) true olur: sonraki tıklamalar atlanır,
+   * yoksa sistemin tıklaması ikinci bir gönderim (çift yayın) olurdu.
+   */
+  humanSubmitted?: boolean;
 }
 
 export type SignupResult =
