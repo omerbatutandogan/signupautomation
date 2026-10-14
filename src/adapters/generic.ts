@@ -499,7 +499,14 @@ async function runStep(ctx: SignupContext, step: Step, index: number, hooks: Ste
       const need = step.minLength ?? 1;
       const settleMs = step.settleMs ?? HUMAN_INPUT_SETTLE_MS;
       const waitMs = step.timeoutMs ?? HUMAN_INPUT_TIMEOUT_MS;
+      // Odak kod alanında olsun: alanlar doldurulunca odak son doldurulan kutuda kalır ve insan tıklamadan yazarsa harfler oraya
+      // düşer (sharedais'te "Content" kutusuna fazladan harf yazıldı, kod alanı boş kaldı). Alanın bir reklamın altında kalması
+      // da sorun değil: odak programla verilir.
+      await locator.scrollIntoViewIfNeeded().catch(() => undefined);
+      await locator.focus().catch(() => undefined);
       await ctx.page.bringToFront().catch(() => undefined);
+      // Tarayıcı penceresi başka pencerelerin arkasında kalabiliyor: terminalde (yalnızca TTY'de) zil çal, insan fark etsin.
+      if (process.stderr.isTTY) process.stderr.write('\u0007');
       log.warn(
         { selector: step.selector, minLength: need, settleMs, waitMinutes: Math.round(waitMs / 60_000) },
         "🙋 İNSAN GİRİŞİ GEREKİYOR — tarayıcıdaki alanı (ör. görsel doğrulama kodu) siz doldurun, yazmayı bitirince birkaç saniye bekleyin; Enter'a ya da Gönder'e BASMAYIN, akış kendiliğinden devam edecek",

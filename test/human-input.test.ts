@@ -98,6 +98,41 @@ describe('humanInput', () => {
     expect(await codeAtClick()).toBe('abc');
   }, 30_000);
 
+  it('kod alanına ODAKLANIR: insan tıklamadan yazarsa harfler hedef alana gider, önceki alan odakta kalmaz', async () => {
+    // Gerçek vaka (sharedais, 14 Ekim): alanlar doldurulunca odak son doldurulan "Content" kutusunda kalıyordu; insan kodu
+    // yazmaya başlayınca harfler oraya düştü ve kod alanı boş kaldı.
+    await page.setContent(`${PAGE}<textarea id="other"></textarea>`);
+    await page.focus('#other');
+    const site = config([{ type: 'humanInput', selector: '#code', minLength: 3, settleMs: 300, timeoutMs: 10_000 }, { type: 'click', selector: '#go' }]);
+    setTimeout(() => void page.keyboard.type('abc'), 800); // insan alana tıklamadan klavyeyle yazar
+    await runSteps(context(site, false), site.steps);
+
+    expect(await page.inputValue('#code')).toBe('abc');
+    expect(await page.inputValue('#other')).toBe('');
+  }, 30_000);
+
+  it('insan gerektiğinde terminal zili çalar (yalnızca TTY\'de: dikkat çekmek için)', async () => {
+    const original = Object.getOwnPropertyDescriptor(process.stderr, 'isTTY');
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const bellCount = async (isTTY: boolean) => {
+      write.mockClear();
+      Object.defineProperty(process.stderr, 'isTTY', { value: isTTY, configurable: true });
+      await page.setContent(PAGE);
+      const site = config([{ type: 'humanInput', selector: '#code', settleMs: 0, timeoutMs: 5_000 }]);
+      typeLater('abc', 300);
+      await runSteps(context(site, false), site.steps);
+      return write.mock.calls.filter((call) => call[0] === '\u0007').length;
+    };
+    try {
+      expect(await bellCount(true)).toBe(1);
+      expect(await bellCount(false)).toBe(0); // boru/CI çıktısına kontrol karakteri basılmaz
+    } finally {
+      if (original) Object.defineProperty(process.stderr, 'isTTY', original);
+      else delete (process.stderr as { isTTY?: boolean }).isTTY;
+      write.mockRestore();
+    }
+  }, 30_000);
+
   it('alan sayfadan kaybolursa (insan kendisi gönderdi ya da sayfa değişti) beklemeyi bırakır: hata yok, sonraki adım kendi koşuluyla karar verir', async () => {
     await page.setContent(PAGE);
     const site = config([
