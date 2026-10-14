@@ -85,7 +85,8 @@
       "type": "click",
       "selector": "form[action='/story/create'] button[type='submit']",
       "when": {
-        "urlContains": "/story/submitarticle"
+        "urlContains": "/story/submitarticle",
+        "visible": "form[action='/story/create'] button[type='submit']"
       }
     }
   ],

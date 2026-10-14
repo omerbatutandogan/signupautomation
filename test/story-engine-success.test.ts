@@ -71,6 +71,33 @@ async function visibleMarkers(id: string, html: string): Promise<string[]> {
   return hits;
 }
 
+describe('hikâye gönderme motoru: config iskeleti (7 site aynı yapıda kalır)', () => {
+  it.each(FAMILY)('%s: 2. sayfayı bekler, kodu insana bırakır ve gönder düğmesini yalnızca görünürken tıklar', async (id) => {
+    const { steps, success } = await loadSubmissionConfig(id);
+    const types = steps.map((step) => step.type);
+
+    // 1. adım: adres → gönder; sonra 2. sayfa BEKLENİR (tıklama sayfa değişmeden döner: ilk korunan adımda waitMs)
+    const wait = steps.find((step) => step.type === 'waitFor');
+    expect(wait?.selector).toBe('#story-link_title');
+    expect(wait?.when?.urlContains).toBe('/story/submitarticle');
+    expect(wait?.when?.waitMs ?? 0).toBeGreaterThanOrEqual(10_000);
+
+    // Kod alanını insan doldurur; sistem çözmeye çalışmaz
+    expect(steps.filter((step) => step.type === 'humanInput').map((step) => step.selector)).toEqual(['#story-verifycode']);
+    expect(types.indexOf('humanInput')).toBeGreaterThan(types.indexOf('fill', 4)); // başlık/açıklama dolduktan SONRA
+
+    // Gönder, sayfa değişmişse (insan formu kendisi gönderdiyse) 10 sn boşuna aranmasın: yalnızca düğme görünürken
+    const last = steps[steps.length - 1]!;
+    expect(last.type).toBe('click');
+    if (last.type !== 'click') return; // tür daraltma (yukarıdaki beklenti zaten başarısız olurdu)
+    expect(last.selector).toBe("form[action='/story/create'] button[type='submit']");
+    expect(last.when?.visible).toBe(last.selector);
+
+    // Başarı işareti yalnızca sitenin doğrulanmış cümlesi
+    expect(success.anyOf).toEqual(['text=/you have successfully submitted/i']);
+  });
+});
+
 describe('hikâye gönderme motoru: başarı işareti', () => {
   it.each(FAMILY)('%s: sitenin "successfully submitted … for Review" mesajı başarı olarak TANINIR', async (id) => {
     expect((await visibleMarkers(id, SUCCESS_PAGE)).length).toBeGreaterThan(0);
