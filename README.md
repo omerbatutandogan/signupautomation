@@ -125,6 +125,6 @@ data/  artifacts/  .auth/    Çalışma zamanı verisi ve sırlar (git'e girmez)
 ## Durum ve sınırlar
 
 - Hesap açma gerçek sitelerde çalışıyor; verim sitelere göre çok değişiyor (saha notları: [docs/FIELD-NOTES.md](docs/FIELD-NOTES.md)). Dry-run formun *doldurulmasını* doğrular; **kayıt sonrasını** (doğrulama türü, başarı sayfası) yalnızca ilk gerçek koşu gösterir.
-- Listeleme akışı hazır ve sıkı korumalı; gerçek gönderimler ürün bilgisinin onaylanmasına bağlı. Bir listelemenin herkese açık olduğu ayrıca doğrulanmalıdır (siteler onay kuyruğu kullanabilir). İlk uçtan uca gerçek listeleme 14 Ekim'de yapıldı (1look4; kodu insan yazdı); kalan siteler tek tek, her birinde insan doğrulama koduyla ilerler.
+- Listeleme akışı hazır ve sıkı korumalı; gerçek gönderimler ürün bilgisinin onaylanmasına bağlı. Bir listelemenin herkese açık olduğu ayrıca doğrulanmalıdır (siteler onay kuyruğu kullanabilir). Uçtan uca gerçek listeleme 14 Ekim'de 3 sitede yapıldı ve doğrulandı (1look4, ondashboard, justpep; kodu insan yazdı); kalan siteler tek tek, her birinde insan doğrulama koduyla ilerler.
 - Telegram bildirimi ve zamanlayıcı (cron) **uygulanmadı**: kayıtlar elle ya da `scripts/run-list.ts` ile başlatılır; captcha'da insan devralması yalnızca terminal çıktısı ve görünür tarayıcıyla çalışır. Uygulanmamış diğer parçalar: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md#8-bilinen-sınırlamalar).
 - Panel (Next.js + Supabase) ayrı bir dalda (`web-panel`) yaşar ve bu dokümantasyonun kapsamı dışındadır.
