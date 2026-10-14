@@ -68,6 +68,7 @@ Komutlar:
   adopt-account <siteId> --note "<kanıt>"  Gerçekte AÇIK ama yanlış kaydedilmiş hesabı tamamlandı yap
   reject-submission <siteId> --note "<kanıt>"  Sonucu doğrulanamayan gönderimin gerçekte YAYINLANMADIĞINI işle (yeniden denenebilir)
   confirm-submission <siteId> --note "<kanıt>" [--url <adres>]  Sonucu doğrulanamayan gönderimin gerçekte YAYINLANDIĞINI işle
+  verify-listing <siteId> --url <adres> --note "<kanıt>"  Tamamlanmış gönderimin herkese açık adresini ve görünürlüğünü işle
   unlock <siteId>         Takılı kilidi temizle
   password <siteId>       Türetilmiş şifreyi yazdır
   check-gmail             Gmail bağlantısını doğrula
@@ -388,6 +389,37 @@ function cmdConfirmSubmission(accountKeyValue: string, note: string | undefined,
       return 1;
     }
     console.log(`✅ ${accountKeyValue}: gönderim "gönderildi (completed)" olarak işlendi${listingUrl ? ` — ${listingUrl}` : ''}.`);
+    return 0;
+  } finally {
+    ledger.close();
+  }
+}
+
+/**
+ * Tamamlanmış (`completed`) gönderimin HERKESE AÇIK adresini ve görünürlüğünü insan kanıtıyla işler: sistem çoğu zaman gönderim
+ * sonrası sayfanın adresini kaydeder. `--url` ve `--note` ZORUNLU: ürünü çerezsiz bir pencerede neyle gördüğün.
+ */
+function cmdVerifyListing(accountKeyValue: string, listingUrl: string | undefined, note: string | undefined): number {
+  if (!note || note.trim().length < 10) {
+    console.error('--note "<kanıt>" gerekli (en az 10 karakter): ürünü çerezsiz bir pencerede neyle gördün?');
+    return 1;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(listingUrl ?? '');
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') throw new Error('http(s) değil');
+  } catch {
+    console.error(`--url ürünün herkese açık http(s) adresi olmalı: "${listingUrl ?? ''}"`);
+    return 1;
+  }
+  const ledger = new Ledger();
+  try {
+    const changed = ledger.verifyListing(accountKeyValue, parsed.toString(), note.trim());
+    if (changed === 0) {
+      console.log(`ℹ️  ${accountKeyValue}: tamamlanmış gerçek gönderim yok, değişiklik yapılmadı.`);
+      return 1;
+    }
+    console.log(`✅ ${accountKeyValue}: herkese açık adres ve görünürlük işlendi — ${parsed.toString()}`);
     return 0;
   } finally {
     ledger.close();
@@ -748,6 +780,22 @@ async function main(): Promise<void> {
         accountKey(productId, siteId),
         noteIdx >= 0 ? process.argv[noteIdx + 1] : undefined,
         urlIdx >= 0 ? process.argv[urlIdx + 1] : undefined,
+      );
+      break;
+    }
+    case 'verify-listing': {
+      const siteId = positional[0];
+      if (!siteId) {
+        console.error('Site id gerekli.');
+        code = 1;
+        break;
+      }
+      const noteIdx = process.argv.indexOf('--note');
+      const urlIdx = process.argv.indexOf('--url');
+      code = cmdVerifyListing(
+        accountKey(productId, siteId),
+        urlIdx >= 0 ? process.argv[urlIdx + 1] : undefined,
+        noteIdx >= 0 ? process.argv[noteIdx + 1] : undefined,
       );
       break;
     }

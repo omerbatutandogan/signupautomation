@@ -47,6 +47,10 @@ const TERMINAL_RESULTS: ReadonlySet<TerminalStatus> = new Set<TerminalStatus>([
   'manual',
 ]);
 
+/** `verifyListing` notun başına bu işareti yazar; Sheet etiketlemesi (annotate-sources) "herkese açık doğrulandı" kararını bundan alır. */
+export const PUBLIC_VERIFIED_PREFIX = 'herkese açık doğrulandı';
+const PREVIOUS_NOTE_SEPARATOR = ' | önceki not: ';
+
 export class Ledger {
   private readonly db: DatabaseType;
 
@@ -366,6 +370,27 @@ export class Ledger {
     return this.db
       .prepare("UPDATE submissions SET status = 'completed', note = ?, listing_url = COALESCE(?, listing_url), finished_at = COALESCE(finished_at, ?) WHERE id = ?")
       .run(note, listingUrl ?? null, Date.now(), row.id).changes;
+  }
+
+  /**
+   * Gerçekten gönderilmiş (`completed`) EN SON gerçek gönderimin HERKESE AÇIK adresini ve görünürlüğünü İNSAN kanıtıyla işler.
+   * Sistem çoğu zaman gönderim sonrası sayfanın adresini (ör. /story/submit) kaydeder, ürünün kendi sayfasını değil; Sheet
+   * "herkese açık doğrulandı" diyebilmek için bu kaydı okur (notun başındaki işaret). Önceki not korunur; tekrar çağrılırsa yalnızca
+   * doğrulama bölümü yenilenir (notlar iç içe büyümez). `failed`, `unconfirmed` ve dry-run satırlarına DOKUNMAZ.
+   * @returns değiştirilen satır sayısı (0 = tamamlanmış gerçek gönderim yok)
+   */
+  verifyListing(accountKey: SiteId, url: string, evidence: string): number {
+    const row = this.db
+      .prepare("SELECT id, note FROM submissions WHERE account_key = ? AND dry_run = 0 AND status = 'completed' ORDER BY started_at DESC, id DESC LIMIT 1")
+      .get(accountKey) as { id: number; note: string | null } | undefined;
+    if (!row) return 0;
+    let previous = row.note ?? '';
+    if (previous.startsWith(PUBLIC_VERIFIED_PREFIX)) {
+      const at = previous.indexOf(PREVIOUS_NOTE_SEPARATOR);
+      previous = at >= 0 ? previous.slice(at + PREVIOUS_NOTE_SEPARATOR.length) : '';
+    }
+    const note = `${PUBLIC_VERIFIED_PREFIX}: ${evidence}${previous ? `${PREVIOUS_NOTE_SEPARATOR}${previous}` : ''}`;
+    return this.db.prepare('UPDATE submissions SET listing_url = ?, note = ? WHERE id = ?').run(url, note, row.id).changes;
   }
 
   /** Bugün başlatılan GERÇEK gönderim sayısı (kayıtlarla aynı günlük hız sınırı mantığı). */

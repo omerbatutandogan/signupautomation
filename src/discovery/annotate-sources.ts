@@ -101,8 +101,10 @@ export function listingBlockerFromNotes(notes: string): { blocker: string; block
  * "BEKLETİLİYOR: <neden>" (gönderim bilinçli olarak durduruldu) ve "İNSAN GEREKİYOR: <neden>" (akış bir insanın girişini
  * bekler, ör. görsel doğrulama kodu). Sheet'te Not'a uyarı olarak düşer.
  */
-export function listingCaveat(notes: string): string | undefined {
+export function listingCaveat(notes: string, state: 'sent' | 'other' = 'other'): string | undefined {
   if (notes.includes('DÜZELTME GEREKİYOR')) return 'Eski, yanlış ürün metniyle gönderildi — düzeltme bekliyor';
+  // "Bekletiliyor" ve "insan gerekiyor" bir sonraki gönderimin nasıl yapılacağını söyler; gönderilmiş satırda alakasız ve yanıltıcıdır.
+  if (state === 'sent') return undefined;
   const hold = /BEKLET[İI]L[İI]YOR:\s*([^|]+)/.exec(notes)?.[1]?.trim();
   if (hold) return `Bilinçli bekletiliyor: ${hold.replace(/\.$/, '')}`;
   const human = /[İI]NSAN GEREK[İI]YOR:\s*([^|]+)/.exec(notes)?.[1]?.trim();
@@ -121,6 +123,7 @@ interface SubmissionRow {
   dry_run: number;
   started_at: number;
   listing_url: string | null;
+  note: string | null;
 }
 
 export function loadAnnotateSources(paths: SourcePaths): AnnotateSources {
@@ -178,7 +181,7 @@ export function loadAnnotateSources(paths: SourcePaths): AnnotateSources {
       }
       submissions.push(
         ...(db
-          .prepare("SELECT account_key, status, dry_run, started_at, listing_url FROM submissions WHERE account_key NOT LIKE '%@%' ORDER BY started_at")
+          .prepare("SELECT account_key, status, dry_run, started_at, listing_url, note FROM submissions WHERE account_key NOT LIKE '%@%' ORDER BY started_at")
           .all() as SubmissionRow[]),
       );
     } finally {
@@ -206,7 +209,10 @@ export function loadAnnotateSources(paths: SourcePaths): AnnotateSources {
 
     let info: ListingInfo;
     if (done) {
-      info = { state: 'sent', url: done.listing_url, date: localDate(done.started_at), ...(caveat ? { caveat } : {}) };
+      const sentCaveat = listingCaveat(submissionConfigs.get(id) ?? '', 'sent');
+      // Herkese açık olduğu insan kanıtıyla doğrulanmış mı? (`verify-listing`, notun başındaki işaret; ledger.ts PUBLIC_VERIFIED_PREFIX)
+      const publicVerified = (done.note ?? '').startsWith('herkese açık doğrulandı');
+      info = { state: 'sent', url: done.listing_url, date: localDate(done.started_at), ...(publicVerified ? { publicVerified } : {}), ...(sentCaveat ? { caveat: sentCaveat } : {}) };
     } else if (live.length > 0) {
       info = { state: 'unconfirmed', url: live[live.length - 1]?.listing_url ?? null, date: localDate((live[live.length - 1] as SubmissionRow).started_at) };
     } else if (hasConfig && rows.some((s) => s.dry_run === 1 && s.status === 'completed')) {

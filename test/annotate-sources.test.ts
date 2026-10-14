@@ -95,7 +95,38 @@ describe('listingCaveat', () => {
   });
 });
 
+describe('listingCaveat — gönderilmiş sitede', () => {
+  it('"insan gerekiyor" ve "bekletiliyor" geleceğe dönük uyarılardır: gönderilmiş satırda gösterilmez; yanlış metin uyarısı gösterilir', () => {
+    expect(listingCaveat('a | 2026-10-13 İNSAN GEREKİYOR: görsel doğrulama kodunu bir insan yazar.', 'sent')).toBeUndefined();
+    expect(listingCaveat('a | 2026-10-13 BEKLETİLİYOR: silme imkânı belirsiz', 'sent')).toBeUndefined();
+    expect(listingCaveat('a | 2026-10-12 DÜZELTME GEREKİYOR: eski metin', 'sent')).toMatch(/düzeltme bekliyor/);
+    // varsayılan davranış (gönderilmemiş siteler) değişmedi
+    expect(listingCaveat('a | 2026-10-13 İNSAN GEREKİYOR: kod')).toBe('İnsan gerekiyor: kod');
+  });
+});
+
 describe('loadAnnotateSources', () => {
+  it('listeleme: verify-listing ile işlenen gönderim "herkese açık doğrulandı" olur ve gerçek adresi taşır; sıradan gönderim olmaz', async () => {
+    const paths = await env(
+      { pub: {}, plain: {}, maybe: {} },
+      {
+        submissions: { pub: { notes: 'x | İNSAN GEREKİYOR: görsel doğrulama kodunu bir insan yazar' }, plain: {}, maybe: {} },
+        ledger: (l) => {
+          submission(l, 'pub', 'completed', { url: 'https://pub.example/story/submit' });
+          l.verifyListing('pub', 'https://pub.example/story/seo/geo', 'çerezsiz açıldı');
+          submission(l, 'plain', 'completed', { url: 'https://plain.example/story/submit' });
+          submission(l, 'maybe', 'unconfirmed');
+        },
+      },
+    );
+    const s = loadAnnotateSources(paths);
+    expect(s.listings.get('pub')).toMatchObject({ state: 'sent', url: 'https://pub.example/story/seo/geo', publicVerified: true });
+    expect(s.listings.get('pub')?.caveat).toBeUndefined(); // gönderildi: "insan gerekiyor" artık alakasız
+    expect(s.listings.get('plain')).toMatchObject({ state: 'sent', url: 'https://plain.example/story/submit' });
+    expect(s.listings.get('plain')?.publicVerified).toBeFalsy();
+    expect(s.listings.get('maybe')?.publicVerified).toBeFalsy();
+  });
+
   it('hesap: yalnızca gerçek tamamlanmış deneme sayılır (dry-run ve atlananlar sayılmaz); "ürün@site" anahtarları dışarıda', async () => {
     const paths = await env({ real: {}, dry: {}, skipped: {} }, {
       ledger: (l) => {

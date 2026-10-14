@@ -143,6 +143,8 @@ export interface ListingInfo {
   state: 'sent' | 'unconfirmed' | 'ready' | 'none';
   url?: string | null;
   date?: string;
+  /** Ürünün herkese açık sayfası insan kanıtıyla doğrulandı mı (`verify-listing`)? Yalnızca `sent` için anlamlı. */
+  publicVerified?: boolean;
   /** Gönderimle ilgili uyarı (ör. eski/yanlış metinle gönderildi, düzeltme bekliyor). */
   caveat?: string;
   /** Bilinen listeleme engeli (kısa, filtrelenebilir) ve ayrıntısı. */
@@ -194,7 +196,7 @@ export function annotate(input: RowInput): Annotation {
         sent ? 'geo.new listeleme formundan gönderildi' : 'Gönderim yapılmış olabilir, başarı doğrulanamadı',
         listing.date && `(${listing.date})`,
         listing.url && `· ${listing.url}`,
-        '· herkese açık olduğu doğrulanmadı.',
+        sent && listing.publicVerified ? '· herkese açık olduğu doğrulandı.' : '· herkese açık olduğu doğrulanmadı.',
         listing.caveat && `${listing.caveat}.`,
       ),
     };

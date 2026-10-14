@@ -140,6 +140,15 @@ Satır `completed` olur; Sheet "Gönderildi" der, sonraki `submit --live` `--for
 - Yalnızca **gerçek** gönderimlerin **en son** doğrulanamamış satırını (`unconfirmed`, süreç ölmüş `running`) değiştirir; `failed`, zaten `completed` ve dry-run satırlarına **dokunmaz**; günlük sayaç değişmez. Çıkış kodu: işlendiyse 0, doğrulanamamış gönderim yoksa 1.
 - Önce ürünü sitede **gerçekten görün** (çerezsiz bir pencerede de). Görmeden işlemeyin: gerçekte yayınlanmamış bir kaydı "gönderildi" yapmak o siteye hiç listelenmemenin önünü kapatır.
 
+### `verify-listing <siteId> --url <adres> --note "<kanıt>"` — "herkese açık doğrulandı" kaydı
+
+Tamamlanmış (`completed`) bir gönderimin **herkese açık adresini ve görünürlüğünü** insan kanıtıyla işler. Sistem çoğu zaman gönderim sonrası sayfanın adresini kaydeder (ör. `/story/submit`), ürünün kendi sayfasını değil;
+bu komut o adresi ürünün sayfasıyla değiştirir ve Sheet'in "gönderildi" satırı "herkese açık olduğu **doğrulandı**" der (komut kullanılmadıysa "doğrulanmadı" der).
+
+- `--url` ve `--note` **zorunlu**: `--url` ürünün herkese açık http(s) adresi, `--note` en az 10 karakter (ürünü **çerezsiz** bir pencerede neyle gördünüz). Notun başına `herkese açık doğrulandı:` yazılır, önceki not korunur; komut tekrar çalıştırılırsa yalnızca bu bölüm yenilenir.
+- Yalnızca **en son** tamamlanmış gerçek gönderimi değiştirir; `failed`, `unconfirmed` ve dry-run satırlarına **dokunmaz**. Tamamlanmış gönderim yoksa çıkış kodu 1.
+- Önce adresi gerçekten açın: görmeden "doğrulandı" yazmayın. Birçok sitede "Up coming" gibi listeler dakikalar içinde akar; kalıcı olan ürünün kendi sayfasıdır.
+
 ### `unlock <siteId>` — takılı kilidi temizle
 
 Çalıştırma kilitleri süre dolunca (`LOCK_TTL_MS`, varsayılan 45 dk) kendiliğinden temizlenir (ledger her açılışta eskimiş kilitleri siler). Süre dolmadan

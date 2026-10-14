@@ -233,3 +233,65 @@ describe('confirmSubmission', () => {
     expect(ledger.liveSubmission('site-h')).not.toBeNull(); // engel sürüyor
   });
 });
+
+/**
+ * verify-listing: gerçekten gönderilmiş (`completed`) kaydın HERKESE AÇIK adresini ve görünürlüğünü insan kanıtıyla işler.
+ * Sistem çoğu zaman gönderim sonrası sayfanın adresini (ör. /story/submit) kaydeder, ürünün kendi sayfasını değil; Sheet ise
+ * "herkese açık doğrulandı" diyebilmek için bu kaydı okur.
+ */
+describe('verifyListing', () => {
+  const send = (key: string, status: string, opts: { dry?: boolean; url?: string; note?: string } = {}) => {
+    const id = ledger.startSubmission(key, `run-${key}-${status}-${Math.random()}`, opts.dry === true);
+    ledger.finishSubmission(id, status, opts.note ?? 'özgün not', opts.url);
+    return id;
+  };
+  const rows = (key: string) => ledger.recentSubmissions(20).filter((r) => r.account_key === key);
+
+  it('completed gerçek gönderimin adresini ürünün herkese açık sayfasıyla değiştirir ve notun başına kanıtı yazar (önceki not korunur)', () => {
+    send('site-a', 'completed', { url: 'https://x.example/story/submit', note: 'onaylandı (görünür:…)' });
+    expect(ledger.verifyListing('site-a', 'https://x.example/story/seo/geo', 'çerezsiz açıldı, başlık var')).toBe(1);
+    const row = rows('site-a')[0]!;
+    expect(row.listing_url).toBe('https://x.example/story/seo/geo');
+    expect(row.status).toBe('completed');
+    expect(row.note).toBe('herkese açık doğrulandı: çerezsiz açıldı, başlık var | önceki not: onaylandı (görünür:…)');
+  });
+
+  it('tekrar çağrılınca notlar iç içe büyümez: yalnızca doğrulama bölümü yenilenir', () => {
+    send('site-b', 'completed', { url: 'https://x.example/old', note: 'onaylandı' });
+    ledger.verifyListing('site-b', 'https://x.example/a', 'ilk kanıt');
+    ledger.verifyListing('site-b', 'https://x.example/b', 'ikinci kanıt');
+    const row = rows('site-b')[0]!;
+    expect(row.note).toBe('herkese açık doğrulandı: ikinci kanıt | önceki not: onaylandı');
+    expect(row.listing_url).toBe('https://x.example/b');
+  });
+
+  it('notu olmayan satırda önceki not eki yazılmaz', () => {
+    const id = ledger.startSubmission('site-c', 'run-c', false);
+    ledger.finishSubmission(id, 'completed', undefined, 'https://x.example/old');
+    ledger.verifyListing('site-c', 'https://x.example/new', 'kanıt var');
+    expect(rows('site-c')[0]!.note).toBe('herkese açık doğrulandı: kanıt var');
+  });
+
+  it('yalnızca EN SON completed gerçek gönderimi değiştirir; failed, unconfirmed ve dry-run satırlarına dokunmaz', () => {
+    const older = send('site-d', 'completed', { url: 'https://x.example/older' });
+    send('site-d', 'failed', { url: 'https://x.example/failed' });
+    send('site-d', 'unconfirmed', { url: 'https://x.example/unconfirmed' });
+    send('site-d', 'completed', { dry: true, url: 'https://x.example/dry' });
+    const latest = send('site-d', 'completed', { url: 'https://x.example/latest' });
+    expect(ledger.verifyListing('site-d', 'https://x.example/public', 'kanıt var')).toBe(1);
+    const byId = new Map(rows('site-d').map((r) => [r.id, r]));
+    expect(byId.get(latest)!.listing_url).toBe('https://x.example/public');
+    expect(byId.get(older)!.listing_url).toBe('https://x.example/older');
+    expect(rows('site-d').filter((r) => r.listing_url === 'https://x.example/public')).toHaveLength(1);
+    expect(rows('site-d').find((r) => r.status === 'failed')!.listing_url).toBe('https://x.example/failed');
+    expect(rows('site-d').find((r) => r.status === 'unconfirmed')!.listing_url).toBe('https://x.example/unconfirmed');
+    expect(rows('site-d').find((r) => r.dry_run === 1)!.listing_url).toBe('https://x.example/dry');
+  });
+
+  it('tamamlanmış gönderim yoksa (yalnızca unconfirmed/dry-run) ya da hesap yoksa 0 döner', () => {
+    send('site-e', 'unconfirmed');
+    send('site-e', 'completed', { dry: true });
+    expect(ledger.verifyListing('site-e', 'https://x.example/p', 'kanıt var')).toBe(0);
+    expect(ledger.verifyListing('yok', 'https://x.example/p', 'kanıt var')).toBe(0);
+  });
+});

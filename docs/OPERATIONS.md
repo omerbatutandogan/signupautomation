@@ -178,7 +178,7 @@ Sınıflar bilerek **az ve kalıcıdır**; ayrıntı "Not"/"Sorun" kolonlarında
 
 | Durum | Anlamı |
 |---|---|
-| **Gönderildi** | geo.new bu sitenin kendi listeleme formundan **gerçekten gönderildi**. Not: tarih, adres ve "herkese açık olduğu doğrulanmadı" uyarısı (yanlış metinle gönderildiyse "düzeltme bekliyor") |
+| **Gönderildi** | geo.new bu sitenin kendi listeleme formundan **gerçekten gönderildi**. Not: tarih, adres ve herkese açıklık durumu: "doğrulanmadı" (varsayılan) ya da `verify-listing` ile işlendiyse "doğrulandı" (yanlış metinle gönderildiyse "düzeltme bekliyor") |
 | **Hesap açık: listeleme hazır** | Hesap açık ve listeleme config'i dry-run'dan geçti; yalnızca insan onayı (`approve-profile`) bekliyor. Bilinçli bekletilenler Not'ta belirtilir |
 | **Hesap açık** | Bu siteyle açılmış gerçek hesap var; listeleme config'i yok. **Sorun** kolonu bilinen listeleme engelini verir (ör. "Listeleme: görsel doğrulama kodu (2. adım)"); Not'ta hesap uyarıları (şifre kullanıcıda, e-posta doğrulanmadı) |
 | **Hazır** | Doğrulanmış config; kayıt denenebilir (captcha türü notta) |

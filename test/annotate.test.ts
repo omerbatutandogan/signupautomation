@@ -174,6 +174,21 @@ describe('annotate — hesap, listeleme, takılma, aile engeli', () => {
     expect(a.not).toContain('düzeltme bekliyor');
   });
 
+  it('herkese açık olduğu doğrulanmış gönderim bunu söyler (doğrulanmadı demez); doğrulanamayan gönderimde ise söylemez', () => {
+    const verified = annotate({ ...base, hasAccount: true, config: cfg(), listing: { state: 'sent', url: 'https://x.example/story/seo/geo', date: '2026-10-14', publicVerified: true } });
+    expect(verified.durum).toBe(DURUM.LISTED);
+    expect(verified.not).toContain('https://x.example/story/seo/geo');
+    expect(verified.not).toMatch(/herkese açık.*doğrulandı/i);
+    expect(verified.not).not.toMatch(/doğrulanmadı/i);
+
+    const unverified = annotate({ ...base, hasAccount: true, config: cfg(), listing: { state: 'sent', url: 'https://x.example/p', date: '2026-10-14' } });
+    expect(unverified.not).toMatch(/herkese açık.*doğrulanmadı/i);
+    // yapılmış olabilir ama doğrulanamamış gönderimde "doğrulandı" iddiası asla çıkmaz
+    const maybe = annotate({ ...base, hasAccount: true, config: cfg(), listing: { state: 'unconfirmed', publicVerified: true } });
+    expect(maybe.not).toMatch(/doğrulanmadı/i);
+    expect(maybe.not).not.toMatch(/herkese açık olduğu doğrulandı/i);
+  });
+
   it('sonucu doğrulanamayan gönderim de ayrıca belirtilir (elle bakılacak)', () => {
     const a = annotate({ ...base, hasAccount: true, config: cfg(), listing: { state: 'unconfirmed' } });
     expect(a.durum).toBe(DURUM.LISTED);
